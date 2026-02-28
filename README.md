@@ -1,6 +1,6 @@
 # zcrc-monitor
 
-Zaciraci の gRPC API（`zaciraci/crates/web`）に接続し、サービスの稼働状況や設定を監視するWebアプリケーションです。
+Zaciraci の gRPC API（`zaciraci/crates/web`）に接続し、サービスの稼働状況や設定を監視するデスクトップ・モバイルアプリケーションです。
 
 ## 機能
 
@@ -9,7 +9,7 @@ Zaciraci の gRPC API（`zaciraci/crates/web`）に接続し、サービスの�
 
 ## 接続先 API
 
-Zaciraci Web クレートが提供する gRPC-Web API に接続します。
+Zaciraci Web クレートが提供する gRPC API に接続します。
 
 ### HealthService
 
