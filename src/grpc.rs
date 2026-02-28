@@ -1,3 +1,4 @@
+pub mod config;
 pub mod health;
 
 use std::sync::Arc;
@@ -36,8 +37,7 @@ impl GrpcClient {
             }
         }
 
-        let mut endpoint =
-            Endpoint::from_shared(self.url.clone()).expect("invalid gRPC URL");
+        let mut endpoint = Endpoint::from_shared(self.url.clone()).expect("invalid gRPC URL");
         if self.url.starts_with("https://") {
             endpoint = endpoint
                 .tls_config(ClientTlsConfig::new().with_native_roots())
