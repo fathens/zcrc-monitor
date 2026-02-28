@@ -1,3 +1,11 @@
+import { Button, LineEdit, ListView } from "std-widgets.slint";
+
+export struct SlintConfigEntry {
+    key: string,
+    value: string,
+    instance-id: string,
+}
+
 export component AppWindow inherits Window {
     title: "zcrc-monitor";
     preferred-width: 800px;
@@ -8,10 +16,26 @@ export component AppWindow inherits Window {
     in property <string> health-db-status: "";
     in property <string> health-error-message: "";
 
+    in-out property <string> config-instance-id: "";
+    in property <[SlintConfigEntry]> config-entries: [];
+    in property <string> config-error-message: "";
+    in property <string> config-status-message: "";
+    in-out property <string> config-edit-key: "";
+    in-out property <string> config-edit-value: "";
+    in property <bool> config-edit-is-new: true;
+
+    callback config-refresh();
+    callback config-instance-id-changed(/* instance-id */ string);
+    callback config-select-entry(/* index */ int);
+    callback config-upsert(/* key */ string, /* value */ string);
+    callback config-delete(/* key */ string);
+    callback config-new-entry();
+
     VerticalLayout {
         padding: 16px;
         spacing: 8px;
 
+        // === Health Status ===
         HorizontalLayout {
             spacing: 8px;
             alignment: start;
@@ -38,6 +62,145 @@ export component AppWindow inherits Window {
         if root.health-error-message != "" : Text {
             text: root.health-error-message;
             color: #f44336;
+        }
+
+        // === Config Section ===
+        Rectangle {
+            height: 1px;
+            background: #cccccc;
+        }
+
+        Text {
+            text: "設定管理";
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        // Instance ID input + buttons
+        HorizontalLayout {
+            spacing: 8px;
+
+            Text {
+                text: "インスタンスID:";
+                vertical-alignment: center;
+            }
+
+            config-id-input := LineEdit {
+                text: root.config-instance-id;
+                placeholder-text: "インスタンスIDを入力";
+                horizontal-stretch: 1;
+                edited(value) => {
+                    root.config-instance-id = value;
+                    root.config-instance-id-changed(value);
+                }
+            }
+
+            Button {
+                text: "更新";
+                clicked => { root.config-refresh(); }
+            }
+
+            Button {
+                text: "新規";
+                clicked => { root.config-new-entry(); }
+            }
+        }
+
+        if root.config-error-message != "" : Text {
+            text: root.config-error-message;
+            color: #f44336;
+        }
+
+        if root.config-status-message != "" : Text {
+            text: root.config-status-message;
+            color: #4caf50;
+        }
+
+        // Config entries list
+        ListView {
+            vertical-stretch: 1;
+
+            for entry[index] in root.config-entries : Rectangle {
+                height: 36px;
+                background: touch.has-hover ? #e3f2fd : transparent;
+
+                touch := TouchArea {
+                    clicked => { root.config-select-entry(index); }
+                }
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 16px;
+
+                    Text {
+                        text: entry.key;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        font-weight: 500;
+                    }
+
+                    Text {
+                        text: entry.value;
+                        vertical-alignment: center;
+                        horizontal-stretch: 2;
+                        color: #555555;
+                    }
+                }
+            }
+        }
+
+        // Edit form
+        Rectangle {
+            height: 1px;
+            background: #eeeeee;
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+
+            Text {
+                text: "キー:";
+                vertical-alignment: center;
+            }
+
+            edit-key-input := LineEdit {
+                text: root.config-edit-key;
+                placeholder-text: "キー";
+                horizontal-stretch: 1;
+                enabled: root.config-edit-is-new;
+                edited(value) => {
+                    root.config-edit-key = value;
+                }
+            }
+
+            Text {
+                text: "値:";
+                vertical-alignment: center;
+            }
+
+            edit-value-input := LineEdit {
+                text: root.config-edit-value;
+                placeholder-text: "値";
+                horizontal-stretch: 2;
+                edited(value) => {
+                    root.config-edit-value = value;
+                }
+            }
+
+            Button {
+                text: root.config-edit-is-new ? "追加" : "保存";
+                clicked => {
+                    root.config-upsert(root.config-edit-key, root.config-edit-value);
+                }
+            }
+
+            if !root.config-edit-is-new : Button {
+                text: "削除";
+                clicked => {
+                    root.config-delete(root.config-edit-key);
+                }
+            }
         }
     }
 }
