@@ -16,20 +16,21 @@ export component AppWindow inherits Window {
     in property <string> health-db-status: "";
     in property <string> health-error-message: "";
 
-    in-out property <string> config-instance-id: "";
+    in-out property <string> config-instance-id: "*";
     in property <[SlintConfigEntry]> config-entries: [];
     in property <string> config-error-message: "";
     in property <string> config-status-message: "";
-    in-out property <string> config-edit-key: "";
+    in property <bool> config-loaded: false;
+    in-out property <int> config-editing-index: -1;
     in-out property <string> config-edit-value: "";
-    in property <bool> config-edit-is-new: true;
+    in-out property <string> config-new-key: "";
+    in-out property <string> config-new-value: "";
 
     callback config-refresh();
-    callback config-instance-id-changed(/* instance-id */ string);
     callback config-select-entry(/* index */ int);
     callback config-upsert(/* key */ string, /* value */ string);
     callback config-delete(/* key */ string);
-    callback config-new-entry();
+    callback config-cancel-edit();
 
     VerticalLayout {
         padding: 16px;
@@ -91,18 +92,12 @@ export component AppWindow inherits Window {
                 horizontal-stretch: 1;
                 edited(value) => {
                     root.config-instance-id = value;
-                    root.config-instance-id-changed(value);
                 }
             }
 
             Button {
                 text: "更新";
                 clicked => { root.config-refresh(); }
-            }
-
-            Button {
-                text: "新規";
-                clicked => { root.config-new-entry(); }
             }
         }
 
@@ -117,18 +112,38 @@ export component AppWindow inherits Window {
         }
 
         // Config entries list
-        ListView {
+        if root.config-instance-id == "" : Text {
+            text: "インスタンスIDを入力してください";
+            color: #9e9e9e;
+            horizontal-alignment: center;
+            vertical-stretch: 1;
+        }
+
+        if root.config-instance-id != "" && root.config-loaded && root.config-entries.length == 0 : Text {
+            text: "設定エントリがありません";
+            color: #9e9e9e;
+            horizontal-alignment: center;
+            vertical-stretch: 1;
+        }
+
+        if root.config-entries.length > 0 : ListView {
             vertical-stretch: 1;
 
             for entry[index] in root.config-entries : Rectangle {
-                height: 36px;
-                background: touch.has-hover ? #e3f2fd : transparent;
+                height: root.config-editing-index == index ? 40px : 36px;
+                background: root.config-editing-index == index ? #e8f0fe
+                    : touch.has-hover ? #e3f2fd
+                    : transparent;
 
                 touch := TouchArea {
-                    clicked => { root.config-select-entry(index); }
+                    clicked => {
+                        if root.config-editing-index != index {
+                            root.config-select-entry(index);
+                        }
+                    }
                 }
 
-                HorizontalLayout {
+                if root.config-editing-index != index : HorizontalLayout {
                     padding-left: 8px;
                     padding-right: 8px;
                     spacing: 16px;
@@ -147,10 +162,53 @@ export component AppWindow inherits Window {
                         color: #555555;
                     }
                 }
+
+                if root.config-editing-index == index : HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 8px;
+
+                    Text {
+                        text: entry.key;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        font-weight: 500;
+                    }
+
+                    LineEdit {
+                        text: root.config-edit-value;
+                        placeholder-text: "値";
+                        horizontal-stretch: 2;
+                        edited(value) => {
+                            root.config-edit-value = value;
+                        }
+                    }
+
+                    Button {
+                        text: "保存";
+                        clicked => {
+                            root.config-upsert(entry.key, root.config-edit-value);
+                        }
+                    }
+
+                    Button {
+                        text: "削除";
+                        clicked => {
+                            root.config-delete(entry.key);
+                        }
+                    }
+
+                    Button {
+                        text: "戻す";
+                        clicked => {
+                            root.config-cancel-edit();
+                        }
+                    }
+                }
             }
         }
 
-        // Edit form
+        // New entry form (always visible)
         Rectangle {
             height: 1px;
             background: #eeeeee;
@@ -164,13 +222,12 @@ export component AppWindow inherits Window {
                 vertical-alignment: center;
             }
 
-            edit-key-input := LineEdit {
-                text: root.config-edit-key;
+            LineEdit {
+                text: root.config-new-key;
                 placeholder-text: "キー";
                 horizontal-stretch: 1;
-                enabled: root.config-edit-is-new;
                 edited(value) => {
-                    root.config-edit-key = value;
+                    root.config-new-key = value;
                 }
             }
 
@@ -179,26 +236,19 @@ export component AppWindow inherits Window {
                 vertical-alignment: center;
             }
 
-            edit-value-input := LineEdit {
-                text: root.config-edit-value;
+            LineEdit {
+                text: root.config-new-value;
                 placeholder-text: "値";
                 horizontal-stretch: 2;
                 edited(value) => {
-                    root.config-edit-value = value;
+                    root.config-new-value = value;
                 }
             }
 
             Button {
-                text: root.config-edit-is-new ? "追加" : "保存";
+                text: "追加";
                 clicked => {
-                    root.config-upsert(root.config-edit-key, root.config-edit-value);
-                }
-            }
-
-            if !root.config-edit-is-new : Button {
-                text: "削除";
-                clicked => {
-                    root.config-delete(root.config-edit-key);
+                    root.config-upsert(root.config-new-key, root.config-new-value);
                 }
             }
         }

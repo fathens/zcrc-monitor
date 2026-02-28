@@ -4,19 +4,18 @@ use crate::{AppWindow, SlintConfigEntry};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel, Weak};
 
 pub fn setup_config_callbacks(app: &AppWindow, client: GrpcClient) {
+    // 初回ロード
+    {
+        let instance_id = app.get_config_instance_id().to_string();
+        refresh_config_list(app.as_weak(), client.clone(), instance_id);
+    }
+
     // config-refresh
     let weak = app.as_weak();
     let c = client.clone();
     app.on_config_refresh(move || {
         let instance_id = get_instance_id(&weak);
         refresh_config_list(weak.clone(), c.clone(), instance_id);
-    });
-
-    // config-instance-id-changed
-    let weak = app.as_weak();
-    let c = client.clone();
-    app.on_config_instance_id_changed(move |instance_id| {
-        refresh_config_list(weak.clone(), c.clone(), instance_id.to_string());
     });
 
     // config-select-entry
@@ -27,21 +26,18 @@ pub fn setup_config_callbacks(app: &AppWindow, client: GrpcClient) {
         };
         let entries = app.get_config_entries();
         if let Some(entry) = entries.row_data(index as usize) {
-            app.set_config_edit_key(entry.key);
+            app.set_config_editing_index(index);
             app.set_config_edit_value(entry.value);
-            app.set_config_edit_is_new(false);
         }
     });
 
-    // config-new-entry
+    // config-cancel-edit
     let weak = app.as_weak();
-    app.on_config_new_entry(move || {
+    app.on_config_cancel_edit(move || {
         let Some(app) = weak.upgrade() else {
             return;
         };
-        app.set_config_edit_key("".into());
-        app.set_config_edit_value("".into());
-        app.set_config_edit_is_new(true);
+        app.set_config_editing_index(-1);
     });
 
     // config-upsert
@@ -62,6 +58,9 @@ pub fn setup_config_callbacks(app: &AppWindow, client: GrpcClient) {
                 Ok(()) => {
                     app.set_config_status_message("保存しました".into());
                     app.set_config_error_message("".into());
+                    app.set_config_editing_index(-1);
+                    app.set_config_new_key("".into());
+                    app.set_config_new_value("".into());
                     let id = app.get_config_instance_id().to_string();
                     refresh_config_list(weak.clone(), c, id);
                 }
@@ -92,9 +91,9 @@ pub fn setup_config_callbacks(app: &AppWindow, client: GrpcClient) {
                 Ok(()) => {
                     app.set_config_status_message("削除しました".into());
                     app.set_config_error_message("".into());
-                    app.set_config_edit_key("".into());
-                    app.set_config_edit_value("".into());
-                    app.set_config_edit_is_new(true);
+                    app.set_config_editing_index(-1);
+                    app.set_config_new_key("".into());
+                    app.set_config_new_value("".into());
                     let id = app.get_config_instance_id().to_string();
                     refresh_config_list(weak.clone(), c, id);
                 }
@@ -120,6 +119,7 @@ fn refresh_config_list(weak: Weak<AppWindow>, client: GrpcClient, instance_id: S
         if let Some(app) = weak.upgrade() {
             let empty: Vec<SlintConfigEntry> = vec![];
             app.set_config_entries(ModelRc::new(VecModel::from(empty)));
+            app.set_config_loaded(false);
             app.set_config_error_message("".into());
             app.set_config_status_message("".into());
         }
@@ -135,6 +135,7 @@ fn refresh_config_list(weak: Weak<AppWindow>, client: GrpcClient, instance_id: S
                 let slint_entries: Vec<SlintConfigEntry> =
                     entries.into_iter().map(to_slint_entry).collect();
                 app.set_config_entries(ModelRc::new(VecModel::from(slint_entries)));
+                app.set_config_loaded(true);
                 app.set_config_error_message("".into());
                 tracing::debug!("Config list refreshed for instance={instance_id}");
             }
