@@ -2,4 +2,42 @@ export component AppWindow inherits Window {
     title: "zcrc-monitor";
     preferred-width: 800px;
     preferred-height: 600px;
+
+    in property <string> health-status: "disconnected";
+    in property <string> health-status-text: "未接続";
+    in property <string> health-db-status: "";
+    in property <string> health-error-message: "";
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 8px;
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+
+            Rectangle {
+                width: 12px;
+                height: 12px;
+                border-radius: 6px;
+                background: root.health-status == "healthy" ? #4caf50
+                    : root.health-status == "unhealthy" ? #f44336
+                    : #9e9e9e;
+            }
+
+            Text {
+                text: root.health-status-text;
+                vertical-alignment: center;
+            }
+        }
+
+        if root.health-db-status != "" : Text {
+            text: "DB: " + root.health-db-status;
+        }
+
+        if root.health-error-message != "" : Text {
+            text: root.health-error-message;
+            color: #f44336;
+        }
+    }
 }
