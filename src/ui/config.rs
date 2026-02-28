@@ -162,3 +162,34 @@ fn spawn(future: impl std::future::Future<Output = ()> + 'static) {
         tracing::error!("Failed to spawn config task: {e}");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn to_slint_entry_maps_all_fields() {
+        let item = ConfigEntryItem {
+            key: "my_key".to_string(),
+            value: "my_value".to_string(),
+            instance_id: "inst-001".to_string(),
+        };
+        let entry = to_slint_entry(item);
+        assert_eq!(entry.key, "my_key");
+        assert_eq!(entry.value, "my_value");
+        assert_eq!(entry.instance_id, "inst-001");
+    }
+
+    #[test]
+    fn to_slint_entry_handles_empty_strings() {
+        let item = ConfigEntryItem {
+            key: "".to_string(),
+            value: "".to_string(),
+            instance_id: "".to_string(),
+        };
+        let entry = to_slint_entry(item);
+        assert_eq!(entry.key, "");
+        assert_eq!(entry.value, "");
+        assert_eq!(entry.instance_id, "");
+    }
+}
