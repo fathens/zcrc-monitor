@@ -55,3 +55,29 @@ impl GrpcClient {
         *guard = None;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_creates_client_with_empty_channel() {
+        let client = GrpcClient::new();
+        let channel = client.channel.blocking_read();
+        assert!(channel.is_none());
+    }
+
+    #[test]
+    fn new_stores_url() {
+        let client = GrpcClient::new();
+        assert!(!client.url.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reset_clears_channel() {
+        let client = GrpcClient::new();
+        client.reset().await;
+        let guard = client.channel.read().await;
+        assert!(guard.is_none());
+    }
+}
