@@ -1,6 +1,8 @@
 use super::GrpcClient;
 use super::proto::config_service_client::ConfigServiceClient;
-use super::proto::{DeleteConfigRequest, GetAllConfigRequest, UpsertConfigRequest};
+use super::proto::{
+    DeleteConfigRequest, GetAllConfigRequest, ListKeyDefinitionsRequest, UpsertConfigRequest,
+};
 
 pub struct ConfigEntryItem {
     pub key: String,
@@ -63,4 +65,32 @@ pub async fn delete(client: &GrpcClient, instance_id: &str, key: &str) -> Result
     .await
     .map_err(|e| format!("{e:?}"))?;
     Ok(())
+}
+
+pub struct KeyDefinitionItem {
+    pub key: String,
+    pub description: String,
+    pub type_name: String,
+    pub resolved_value: String,
+}
+
+pub async fn list_key_definitions(client: &GrpcClient) -> Result<Vec<KeyDefinitionItem>, String> {
+    let channel = client.channel().await.map_err(|e| format!("{e:?}"))?;
+    let mut svc = ConfigServiceClient::new(channel);
+    let response = svc
+        .list_key_definitions(ListKeyDefinitionsRequest {})
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let items = response
+        .into_inner()
+        .definitions
+        .into_iter()
+        .map(|d| KeyDefinitionItem {
+            key: d.key,
+            description: d.description,
+            type_name: d.type_name,
+            resolved_value: d.resolved_value,
+        })
+        .collect();
+    Ok(items)
 }

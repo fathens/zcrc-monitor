@@ -1,9 +1,12 @@
 use crate::grpc::GrpcClient;
-use crate::grpc::config::ConfigEntryItem;
-use crate::{AppWindow, SlintConfigEntry};
+use crate::grpc::config::{ConfigEntryItem, KeyDefinitionItem};
+use crate::{AppWindow, SlintConfigEntry, SlintKeyDefinition};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel, Weak};
 
 pub fn setup_config_callbacks(app: &AppWindow, client: GrpcClient) {
+    // キー定義リファレンスを一度だけフェッチ
+    fetch_key_definitions(app.as_weak(), client.clone());
+
     // 初回ロード
     {
         let instance_id = app.get_config_instance_id().to_string();
@@ -149,6 +152,39 @@ fn refresh_config_list(weak: Weak<AppWindow>, client: GrpcClient, instance_id: S
     });
 }
 
+fn fetch_key_definitions(weak: Weak<AppWindow>, client: GrpcClient) {
+    spawn(async move {
+        let result = crate::grpc::config::list_key_definitions(&client).await;
+        let Some(app) = weak.upgrade() else {
+            return;
+        };
+        match result {
+            Ok(mut items) => {
+                items.sort_by(|a, b| a.key.cmp(&b.key));
+                let slint_defs: Vec<SlintKeyDefinition> =
+                    items.into_iter().map(to_slint_key_definition).collect();
+                app.set_key_definitions(ModelRc::new(VecModel::from(slint_defs)));
+                app.set_key_definitions_error("".into());
+                tracing::debug!("Key definitions loaded");
+            }
+            Err(e) => {
+                client.reset().await;
+                app.set_key_definitions_error(SharedString::from(e.clone()));
+                tracing::warn!("Key definitions fetch failed: {e}");
+            }
+        }
+    });
+}
+
+fn to_slint_key_definition(item: KeyDefinitionItem) -> SlintKeyDefinition {
+    SlintKeyDefinition {
+        key: SharedString::from(item.key),
+        description: SharedString::from(item.description),
+        type_name: SharedString::from(item.type_name),
+        resolved_value: SharedString::from(item.resolved_value),
+    }
+}
+
 fn to_slint_entry(item: ConfigEntryItem) -> SlintConfigEntry {
     SlintConfigEntry {
         key: SharedString::from(item.key),
@@ -191,5 +227,35 @@ mod tests {
         assert_eq!(entry.key, "");
         assert_eq!(entry.value, "");
         assert_eq!(entry.instance_id, "");
+    }
+
+    #[test]
+    fn to_slint_key_definition_maps_all_fields() {
+        let item = KeyDefinitionItem {
+            key: "TRADE_ENABLED".to_string(),
+            description: "Whether trading is enabled".to_string(),
+            type_name: "bool".to_string(),
+            resolved_value: "false".to_string(),
+        };
+        let def = to_slint_key_definition(item);
+        assert_eq!(def.key, "TRADE_ENABLED");
+        assert_eq!(def.description, "Whether trading is enabled");
+        assert_eq!(def.type_name, "bool");
+        assert_eq!(def.resolved_value, "false");
+    }
+
+    #[test]
+    fn to_slint_key_definition_handles_empty_strings() {
+        let item = KeyDefinitionItem {
+            key: "".to_string(),
+            description: "".to_string(),
+            type_name: "".to_string(),
+            resolved_value: "".to_string(),
+        };
+        let def = to_slint_key_definition(item);
+        assert_eq!(def.key, "");
+        assert_eq!(def.description, "");
+        assert_eq!(def.type_name, "");
+        assert_eq!(def.resolved_value, "");
     }
 }
