@@ -1,0 +1,365 @@
+import { Button, LineEdit, ListView } from "std-widgets.slint";
+
+export struct SlintConfigEntry {
+    key: string,
+    value: string,
+    instance-id: string,
+}
+
+export struct SlintKeyDefinition {
+    key: string,
+    description: string,
+    type-name: string,
+    resolved-value: string,
+}
+
+export component AppWindow inherits Window {
+    title: "zcrc-monitor";
+    preferred-width: 800px;
+    preferred-height: 600px;
+
+    in property <string> health-status: "disconnected";
+    in property <string> health-status-text: "未接続";
+    in property <string> health-db-status: "";
+    in property <string> health-error-message: "";
+
+    in-out property <string> config-instance-id: "*";
+    in property <[SlintConfigEntry]> config-entries: [];
+    in property <string> config-error-message: "";
+    in property <string> config-status-message: "";
+    in property <bool> config-loaded: false;
+    in-out property <int> config-editing-index: -1;
+    in-out property <string> config-edit-value: "";
+    in-out property <string> config-new-key: "";
+    in-out property <string> config-new-value: "";
+
+    in property <[SlintKeyDefinition]> key-definitions: [];
+    in property <string> key-definitions-error: "";
+    in-out property <bool> key-definitions-expanded: false;
+
+    callback config-refresh();
+    callback config-select-entry(/* index */ int);
+    callback config-upsert(/* key */ string, /* value */ string);
+    callback config-delete(/* key */ string);
+    callback config-cancel-edit();
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 8px;
+
+        // === Health Status ===
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+
+            Rectangle {
+                width: 12px;
+                height: 12px;
+                border-radius: 6px;
+                background: root.health-status == "healthy" ? #4caf50
+                    : root.health-status == "unhealthy" ? #f44336
+                    : #9e9e9e;
+            }
+
+            Text {
+                text: root.health-status-text;
+                vertical-alignment: center;
+            }
+        }
+
+        if root.health-db-status != "" : Text {
+            text: "DB: " + root.health-db-status;
+        }
+
+        if root.health-error-message != "" : Text {
+            text: root.health-error-message;
+            color: #f44336;
+        }
+
+        // === Config Section ===
+        Rectangle {
+            height: 1px;
+            background: #cccccc;
+        }
+
+        Text {
+            text: "設定管理";
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        // Instance ID input + buttons
+        HorizontalLayout {
+            spacing: 8px;
+
+            Text {
+                text: "インスタンスID:";
+                vertical-alignment: center;
+            }
+
+            config-id-input := LineEdit {
+                text: root.config-instance-id;
+                placeholder-text: "インスタンスIDを入力";
+                horizontal-stretch: 1;
+                edited(value) => {
+                    root.config-instance-id = value;
+                }
+            }
+
+            Button {
+                text: "読込";
+                clicked => { root.config-refresh(); }
+            }
+        }
+
+        if root.config-error-message != "" : Text {
+            text: root.config-error-message;
+            color: #f44336;
+        }
+
+        if root.config-status-message != "" : Text {
+            text: root.config-status-message;
+            color: #4caf50;
+        }
+
+        // Config entries list
+        if root.config-instance-id == "" : Text {
+            text: "インスタンスIDを入力してください";
+            color: #9e9e9e;
+            horizontal-alignment: center;
+        }
+
+        if root.config-instance-id != "" && root.config-loaded && root.config-entries.length == 0 : Text {
+            text: "設定エントリがありません";
+            color: #9e9e9e;
+            horizontal-alignment: center;
+        }
+
+        if root.config-entries.length > 0 : ListView {
+            vertical-stretch: 1;
+
+            for entry[index] in root.config-entries : Rectangle {
+                background: root.config-editing-index == index ? #e8f0fe
+                    : touch.has-hover ? #e3f2fd
+                    : transparent;
+
+                touch := TouchArea {
+                    clicked => {
+                        if root.config-editing-index != index {
+                            root.config-select-entry(index);
+                        }
+                    }
+                }
+
+                if root.config-editing-index != index : HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 16px;
+
+                    Text {
+                        text: entry.key;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        font-weight: 500;
+                    }
+
+                    Text {
+                        text: entry.value;
+                        vertical-alignment: center;
+                        horizontal-stretch: 2;
+                        color: #555555;
+                    }
+                }
+
+                if root.config-editing-index == index : HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 8px;
+
+                    Text {
+                        text: entry.key;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        font-weight: 500;
+                    }
+
+                    LineEdit {
+                        text: root.config-edit-value;
+                        placeholder-text: "値";
+                        horizontal-stretch: 2;
+                        edited(value) => {
+                            root.config-edit-value = value;
+                        }
+                    }
+
+                    Button {
+                        text: "保存";
+                        clicked => {
+                            root.config-upsert(entry.key, root.config-edit-value);
+                        }
+                    }
+
+                    Button {
+                        text: "削除";
+                        clicked => {
+                            root.config-delete(entry.key);
+                        }
+                    }
+
+                    Button {
+                        text: "戻す";
+                        clicked => {
+                            root.config-cancel-edit();
+                        }
+                    }
+                }
+            }
+        }
+
+        // New entry form (always visible)
+        Rectangle {
+            height: 1px;
+            background: #eeeeee;
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+
+            Text {
+                text: "キー:";
+                vertical-alignment: center;
+            }
+
+            LineEdit {
+                text: root.config-new-key;
+                placeholder-text: "キー";
+                horizontal-stretch: 1;
+                edited(value) => {
+                    root.config-new-key = value;
+                }
+            }
+
+            Text {
+                text: "値:";
+                vertical-alignment: center;
+            }
+
+            LineEdit {
+                text: root.config-new-value;
+                placeholder-text: "値";
+                horizontal-stretch: 2;
+                edited(value) => {
+                    root.config-new-value = value;
+                }
+            }
+
+            Button {
+                text: "追加";
+                clicked => {
+                    root.config-upsert(root.config-new-key, root.config-new-value);
+                }
+            }
+        }
+
+        // === Key Definitions Reference ===
+        Rectangle {
+            height: 1px;
+            background: #cccccc;
+        }
+
+        ref-toggle := TouchArea {
+            clicked => {
+                root.key-definitions-expanded = !root.key-definitions-expanded;
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+
+                Text {
+                    text: root.key-definitions-expanded ? "▼" : "▶";
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "キー定義リファレンス (" + root.key-definitions.length + "件)";
+                    font-size: 14px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        if root.key-definitions-error != "" : Text {
+            text: root.key-definitions-error;
+            color: #f44336;
+        }
+
+        if !root.key-definitions-expanded : Rectangle {
+            vertical-stretch: 1;
+        }
+
+        if root.key-definitions-expanded && root.key-definitions.length > 0 : ListView {
+            vertical-stretch: 1;
+
+            for def[index] in root.key-definitions : Rectangle {
+                background: def-hover.has-hover ? #e3f2fd
+                    : Math.mod(index, 2) == 0 ? #f8f8f8
+                    : transparent;
+
+                def-hover := TouchArea {}
+
+                VerticalLayout {
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 2px;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        Text {
+                            text: def.key;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            text: def.resolved-value;
+                            color: #1976d2;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            width: root.width * 0.25;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 4px;
+                        alignment: start;
+
+                        Text {
+                            text: def.type-name;
+                            color: #888888;
+                            font-size: 11px;
+                        }
+
+                        Text {
+                            text: "—";
+                            color: #cccccc;
+                            font-size: 11px;
+                        }
+
+                        Text {
+                            text: def.description;
+                            color: #666666;
+                            font-size: 11px;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

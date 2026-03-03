@@ -1,0 +1,3 @@
+[submodule "zaciraci"]
+	path = zaciraci
+	url = git@github.com:fathens/zaciraci.git
