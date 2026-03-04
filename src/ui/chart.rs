@@ -81,7 +81,8 @@ pub fn render_line_chart(
 
             chart
                 .configure_mesh()
-                .light_line_style(RGBColor(255, 255, 255))
+                .disable_x_mesh()
+                .disable_y_mesh()
                 .x_labels(6)
                 .y_labels(6)
                 .y_label_formatter(&|v| format_compact(*v))
@@ -93,6 +94,13 @@ pub fn render_line_chart(
                     values.iter().enumerate().map(|(i, &v)| (i as f64, v)),
                     BLUE.stroke_width(2),
                 ))
+                .unwrap();
+
+            // データポイントにマーカーを描画
+            chart
+                .draw_series(values.iter().enumerate().map(|(i, &v)| {
+                    Circle::new((i as f64, v), 4, BLUE.filled())
+                }))
                 .unwrap();
         }
 
