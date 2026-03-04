@@ -126,7 +126,7 @@ fn fetch_holdings(weak: Weak<AppWindow>, client: GrpcClient, period_id: String) 
         match result {
             Ok(items) => {
                 let line_chart = chart::render_line_chart(&items, 400, 250);
-                let bar_chart = chart::render_bar_chart(&items, 400, 250);
+                let bar_chart = chart::render_token_lines_chart(&items, 400, 250);
                 let slint_items: Vec<SlintPortfolioHolding> =
                     items.into_iter().map(to_slint_portfolio_holding).collect();
                 app.set_eval_period_holdings(ModelRc::new(VecModel::from(slint_items)));

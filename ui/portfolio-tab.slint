@@ -188,7 +188,7 @@ export component PortfolioTab inherits VerticalLayout {
         vertical-stretch: 1;
 
         for holding in root.eval-period-holdings : VerticalLayout {
-            spacing: 2px;
+            spacing: 4px;
 
             Rectangle {
                 height: 1px;
@@ -197,7 +197,7 @@ export component PortfolioTab inherits VerticalLayout {
 
             Text {
                 text: holding.timestamp;
-                font-size: 11px;
+                font-size: 13px;
                 font-weight: 500;
                 color: #333333;
             }
@@ -208,7 +208,7 @@ export component PortfolioTab inherits VerticalLayout {
 
                 Text {
                     text: th.token;
-                    font-size: 11px;
+                    font-size: 13px;
                     color: #555555;
                     horizontal-stretch: 2;
                     overflow: elide;
@@ -216,7 +216,7 @@ export component PortfolioTab inherits VerticalLayout {
 
                 Text {
                     text: th.balance;
-                    font-size: 11px;
+                    font-size: 13px;
                     color: #666666;
                     horizontal-stretch: 1;
                     horizontal-alignment: right;
@@ -224,7 +224,7 @@ export component PortfolioTab inherits VerticalLayout {
 
                 Text {
                     text: th.value-wnear;
-                    font-size: 11px;
+                    font-size: 13px;
                     color: #1976d2;
                     horizontal-stretch: 1;
                     horizontal-alignment: right;
@@ -237,7 +237,7 @@ export component PortfolioTab inherits VerticalLayout {
 
                 Text {
                     text: "合計";
-                    font-size: 11px;
+                    font-size: 13px;
                     font-weight: 500;
                     color: #333333;
                     horizontal-stretch: 2;
@@ -249,7 +249,7 @@ export component PortfolioTab inherits VerticalLayout {
 
                 Text {
                     text: holding.total-value-wnear;
-                    font-size: 11px;
+                    font-size: 13px;
                     font-weight: 500;
                     color: #1976d2;
                     horizontal-stretch: 1;

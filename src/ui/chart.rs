@@ -110,12 +110,14 @@ pub fn render_line_chart(
     Image::from_rgb8(pixel_buffer)
 }
 
-/// 最新スナップショットのトークン別価値を棒グラフでレンダリングする。
-pub fn render_bar_chart(
+/// トークンごとの value_wnear 時系列推移を折れ線グラフでレンダリングする。
+pub fn render_token_lines_chart(
     holdings: &[PortfolioHoldingItem],
     width: u32,
     height: u32,
 ) -> Image {
+    use std::collections::BTreeMap;
+
     let mut pixel_buffer = SharedPixelBuffer::new(width, height);
     let size = (width, height);
 
@@ -124,54 +126,89 @@ pub fn render_bar_chart(
         let root = backend.into_drawing_area();
         root.fill(&WHITE).unwrap();
 
-        if let Some(latest) = holdings.last() {
-            let token_holdings = &latest.token_holdings;
-            if !token_holdings.is_empty() {
-                let bar_data: Vec<(String, f64)> = token_holdings
-                    .iter()
-                    .map(|th| {
-                        let label = shorten_token(&th.token);
-                        let value = yocto_to_f64(&th.value_wnear);
-                        (label, value)
-                    })
-                    .collect();
+        if !holdings.is_empty() {
+            // トークン名 → 時系列値を収集
+            let mut token_series: BTreeMap<String, Vec<(usize, f64)>> = BTreeMap::new();
+            for (i, h) in holdings.iter().enumerate() {
+                for th in &h.token_holdings {
+                    let name = shorten_token(&th.token);
+                    let value = yocto_to_f64(&th.value_wnear);
+                    token_series.entry(name).or_default().push((i, value));
+                }
+            }
 
-                let max_val = bar_data
-                    .iter()
-                    .map(|(_, v)| *v)
-                    .fold(f64::NEG_INFINITY, f64::max);
-                let y_max = if max_val <= 0.0 { 1.0 } else { max_val * 1.2 };
+            // Y 軸の範囲を計算
+            let all_values: Vec<f64> = token_series
+                .values()
+                .flat_map(|pts| pts.iter().map(|(_, v)| *v))
+                .collect();
+            let min_val = all_values.iter().cloned().fold(f64::INFINITY, f64::min);
+            let max_val = all_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let margin = (max_val - min_val).abs() * 0.1;
+            let y_min = if (max_val - min_val).abs() < f64::EPSILON {
+                min_val - 1.0
+            } else {
+                (min_val - margin).min(0.0)
+            };
+            let y_max = if (max_val - min_val).abs() < f64::EPSILON {
+                max_val + 1.0
+            } else {
+                max_val + margin
+            };
 
-                let mut chart = ChartBuilder::on(&root)
-                    .caption("Token Value (NEAR)", ("sans-serif", 14))
-                    .margin(10)
-                    .x_label_area_size(40)
-                    .y_label_area_size(80)
-                    .build_cartesian_2d(0..bar_data.len(), 0f64..y_max)
-                    .unwrap();
+            let x_max = (holdings.len() as f64 - 1.0).max(1.0);
+
+            let mut chart = ChartBuilder::on(&root)
+                .caption("Token Value (NEAR)", ("sans-serif", 14))
+                .margin(10)
+                .x_label_area_size(30)
+                .y_label_area_size(80)
+                .build_cartesian_2d(0f64..x_max, y_min..y_max)
+                .unwrap();
+
+            chart
+                .configure_mesh()
+                .disable_x_mesh()
+                .disable_y_mesh()
+                .x_labels(6)
+                .y_labels(6)
+                .y_label_formatter(&|v| format_compact(*v))
+                .draw()
+                .unwrap();
+
+            // トークンごとに色分けして折れ線 + マーカー
+            for (color_idx, (name, pts)) in token_series.iter().enumerate() {
+                let color = Palette99::pick(color_idx);
+                let color2 = Palette99::pick(color_idx);
+                let color3 = Palette99::pick(color_idx);
+                chart
+                    .draw_series(LineSeries::new(
+                        pts.iter().map(|&(i, v)| (i as f64, v)),
+                        color.stroke_width(2),
+                    ))
+                    .unwrap()
+                    .label(name.as_str())
+                    .legend(move |(x, y)| {
+                        Rectangle::new([(x, y - 5), (x + 10, y + 5)], color2.filled())
+                    });
 
                 chart
-                    .configure_mesh()
-                    .light_line_style(RGBColor(255, 255, 255))
-                    .x_labels(bar_data.len())
-                    .x_label_formatter(&|idx| {
-                        bar_data
-                            .get(*idx)
-                            .map(|(label, _)| label.clone())
-                            .unwrap_or_default()
-                    })
-                    .y_labels(6)
-                    .y_label_formatter(&|v| format_compact(*v))
-                    .draw()
-                    .unwrap();
-
-                chart
-                    .draw_series(bar_data.iter().enumerate().map(|(i, (_, v))| {
-                        let color = Palette99::pick(i);
-                        Rectangle::new([(i, 0.0), (i + 1, *v)], color.filled())
-                    }))
+                    .draw_series(
+                        pts.iter()
+                            .map(|&(i, v)| Circle::new((i as f64, v), 3, color3.filled())),
+                    )
                     .unwrap();
             }
+
+            // 凡例を描画
+            chart
+                .configure_series_labels()
+                .position(SeriesLabelPosition::UpperRight)
+                .background_style(WHITE.mix(0.8))
+                .border_style(BLACK)
+                .label_font(("sans-serif", 11))
+                .draw()
+                .unwrap();
         }
 
         root.present().unwrap();
