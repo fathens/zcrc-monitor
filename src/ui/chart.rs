@@ -40,13 +40,20 @@ pub struct EvalPeriodsChart {
     pub y_axis: Image,
     pub body: Image,
     pub body_width: u32,
+    /// プロットエリアの幅（マージン除く）
+    pub plot_width: u32,
+    /// X 軸の時間範囲
+    pub x_min: i64,
+    pub x_max: i64,
+    /// 時間順に並んだ (timestamp, 元の periods 配列のインデックス)
+    pub sorted_points: Vec<(i64, usize)>,
 }
 
 // チャート共通の縦レイアウト定数
 const CHART_MARGIN_TOP: u32 = 5;
 const CHART_X_LABEL_SIZE: u32 = 30;
 const CHART_Y_LABEL_SIZE: u32 = 60;
-const Y_AXIS_WIDTH: u32 = 70;
+const Y_AXIS_WIDTH: u32 = 80;
 
 /// Y 軸範囲を計算する。
 fn calc_y_range(values: &[f64]) -> (f64, f64) {
@@ -77,17 +84,22 @@ pub fn render_eval_periods_chart(
             y_axis: Image::default(),
             body: Image::default(),
             body_width: 0,
+            plot_width: 0,
+            x_min: 0,
+            x_max: 0,
+            sorted_points: vec![],
         };
     }
 
-    // データ準備（古い→新しい順）
-    let mut data: Vec<(i64, f64)> = periods
+    // データ準備（古い→新しい順、元のインデックスを保持）
+    let mut data: Vec<(i64, f64, usize)> = periods
         .iter()
-        .map(|p| (p.start_time.timestamp(), yocto_to_f64(&p.initial_value)))
+        .enumerate()
+        .map(|(idx, p)| (p.start_time.timestamp(), yocto_to_f64(&p.initial_value), idx))
         .collect();
-    data.sort_by_key(|(ts, _)| *ts);
+    data.sort_by_key(|(ts, _, _)| *ts);
 
-    let values: Vec<f64> = data.iter().map(|(_, v)| *v).collect();
+    let values: Vec<f64> = data.iter().map(|(_, v, _)| *v).collect();
     let (y_min, y_max) = calc_y_range(&values);
 
     let t_min = data.first().unwrap().0;
@@ -109,7 +121,7 @@ pub fn render_eval_periods_chart(
                 .margin_top(CHART_MARGIN_TOP)
                 .margin_bottom(0)
                 .margin_left(5)
-                .margin_right(0)
+                .margin_right(5)
                 .y_label_area_size(CHART_Y_LABEL_SIZE)
                 .x_label_area_size(CHART_X_LABEL_SIZE)
                 .build_cartesian_2d(0f64..1f64, y_min..y_max)
@@ -164,7 +176,7 @@ pub fn render_eval_periods_chart(
 
             chart
                 .draw_series(LineSeries::new(
-                    data.iter().map(|&(ts, v)| (ts, v)),
+                    data.iter().map(|&(ts, v, _)| (ts, v)),
                     BLUE.stroke_width(2),
                 ))
                 .unwrap();
@@ -172,7 +184,7 @@ pub fn render_eval_periods_chart(
             chart
                 .draw_series(
                     data.iter()
-                        .map(|&(ts, v)| Circle::new((ts, v), 4, BLUE.filled())),
+                        .map(|&(ts, v, _)| Circle::new((ts, v), 4, BLUE.filled())),
                 )
                 .unwrap();
 
@@ -181,10 +193,17 @@ pub fn render_eval_periods_chart(
         Image::from_rgb8(buf)
     };
 
+    let plot_width = body_width.saturating_sub(10); // margin_right=10
+    let sorted_points: Vec<(i64, usize)> = data.iter().map(|&(ts, _, idx)| (ts, idx)).collect();
+
     EvalPeriodsChart {
         y_axis,
         body,
         body_width,
+        plot_width,
+        x_min,
+        x_max,
+        sorted_points,
     }
 }
 

@@ -1,4 +1,6 @@
 use num_traits::ToPrimitive;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use crate::grpc::GrpcClient;
 use crate::grpc::portfolio::{EvaluationPeriodItem, PortfolioHoldingItem, TokenHoldingItem};
@@ -6,16 +8,29 @@ use crate::ui::chart;
 use crate::{AppWindow, SlintEvaluationPeriod, SlintPortfolioHolding, SlintTokenHolding};
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel, Weak};
 
+/// チャートクリック時に必要なメタデータ
+#[derive(Default)]
+struct ChartClickInfo {
+    plot_width: u32,
+    x_min: i64,
+    x_max: i64,
+    /// (timestamp, 元の periods 配列のインデックス)
+    sorted_points: Vec<(i64, usize)>,
+}
+
 pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
+    let click_info: Rc<RefCell<ChartClickInfo>> = Rc::new(RefCell::new(ChartClickInfo::default()));
+
     // 初回ロード
-    refresh_eval_periods(app.as_weak(), client.clone(), 0, 20);
+    refresh_eval_periods(app.as_weak(), client.clone(), click_info.clone(), 0, 20);
 
     // eval-periods-refresh
     let weak = app.as_weak();
     let c = client.clone();
+    let ci = click_info.clone();
     app.on_eval_periods_refresh(move || {
         let (page, page_size) = get_page_info(&weak);
-        refresh_eval_periods(weak.clone(), c.clone(), page, page_size);
+        refresh_eval_periods(weak.clone(), c.clone(), ci.clone(), page, page_size);
     });
 
     // eval-period-select
@@ -45,6 +60,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     // eval-periods-next-page
     let weak = app.as_weak();
     let c = client.clone();
+    let ci = click_info.clone();
     app.on_eval_periods_next_page(move || {
         let Some(app) = weak.upgrade() else {
             return;
@@ -54,12 +70,13 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
         app.set_eval_period_selected_index(-1);
         clear_holdings(&app);
         let page_size = app.get_eval_periods_page_size();
-        refresh_eval_periods(weak.clone(), c.clone(), page, page_size);
+        refresh_eval_periods(weak.clone(), c.clone(), ci.clone(), page, page_size);
     });
 
     // eval-periods-prev-page
     let weak = app.as_weak();
-    let c = client;
+    let c = client.clone();
+    let ci = click_info.clone();
     app.on_eval_periods_prev_page(move || {
         let Some(app) = weak.upgrade() else {
             return;
@@ -69,7 +86,42 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
         app.set_eval_period_selected_index(-1);
         clear_holdings(&app);
         let page_size = app.get_eval_periods_page_size();
-        refresh_eval_periods(weak.clone(), c.clone(), page, page_size);
+        refresh_eval_periods(weak.clone(), c.clone(), ci.clone(), page, page_size);
+    });
+
+    // eval-period-chart-click: クリック位置から最寄りの期間を選択
+    let weak = app.as_weak();
+    let c = client;
+    let ci = click_info;
+    app.on_eval_period_chart_click(move |x_px| {
+        let Some(app) = weak.upgrade() else {
+            return;
+        };
+        let info = ci.borrow();
+        if info.plot_width == 0 || info.sorted_points.is_empty() {
+            return;
+        }
+
+        // ピクセル座標→タイムスタンプ変換
+        let ratio = x_px as f64 / info.plot_width as f64;
+        let t = info.x_min as f64 + ratio * (info.x_max - info.x_min) as f64;
+
+        // 最寄りのデータポイントを探す
+        let (_, nearest_idx) = info
+            .sorted_points
+            .iter()
+            .min_by_key(|(ts, _)| ((*ts as f64 - t).abs() * 1000.0) as i64)
+            .copied()
+            .unwrap();
+
+        app.set_eval_period_selected_index(nearest_idx as i32);
+        clear_holdings(&app);
+
+        let periods = app.get_eval_periods();
+        if let Some(ep) = periods.row_data(nearest_idx) {
+            let period_id = ep.period_id.to_string();
+            fetch_holdings(weak.clone(), c.clone(), period_id);
+        }
     });
 }
 
@@ -92,7 +144,13 @@ fn get_page_info(weak: &Weak<AppWindow>) -> (i32, i32) {
         .unwrap_or((0, 20))
 }
 
-fn refresh_eval_periods(weak: Weak<AppWindow>, client: GrpcClient, page: i32, page_size: i32) {
+fn refresh_eval_periods(
+    weak: Weak<AppWindow>,
+    client: GrpcClient,
+    click_info: Rc<RefCell<ChartClickInfo>>,
+    page: i32,
+    page_size: i32,
+) {
     spawn(async move {
         let result = crate::grpc::portfolio::get_evaluation_periods(&client, page, page_size).await;
         let Some(app) = weak.upgrade() else {
@@ -104,6 +162,15 @@ fn refresh_eval_periods(weak: Weak<AppWindow>, client: GrpcClient, page: i32, pa
                 app.set_eval_periods_y_axis_image(periods_chart.y_axis);
                 app.set_eval_periods_chart_body_image(periods_chart.body);
                 app.set_eval_periods_chart_width(periods_chart.body_width as i32);
+
+                // クリック判定用メタデータを保存
+                {
+                    let mut info = click_info.borrow_mut();
+                    info.plot_width = periods_chart.plot_width;
+                    info.x_min = periods_chart.x_min;
+                    info.x_max = periods_chart.x_max;
+                    info.sorted_points = periods_chart.sorted_points;
+                }
 
                 // 最新の期間を自動選択してホールディングをフェッチ
                 if let Some(first) = items.first() {

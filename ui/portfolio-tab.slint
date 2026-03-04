@@ -28,6 +28,7 @@ export component PortfolioTab inherits VerticalLayout {
     callback eval-period-select(/* index */ int);
     callback eval-periods-next-page();
     callback eval-periods-prev-page();
+    callback eval-period-chart-click(/* x_px */ float);
 
     // === 評価期間チャート（横スクロール、Y軸固定） ===
     HorizontalLayout {
@@ -58,7 +59,7 @@ export component PortfolioTab inherits VerticalLayout {
 
         Image {
             source: root.eval-periods-y-axis-image;
-            width: 70px;
+            width: 80px;
             height: 150px;
             image-fit: fill;
         }
@@ -68,6 +69,15 @@ export component PortfolioTab inherits VerticalLayout {
             height: 150px;
             viewport-width: root.eval-periods-chart-width * 1px;
             viewport-height: 150px;
+
+            chart-body-ta := TouchArea {
+                width: root.eval-periods-chart-width * 1px;
+                height: 150px;
+
+                clicked => {
+                    root.eval-period-chart-click(chart-body-ta.pressed-x / 1px);
+                }
+            }
 
             Image {
                 source: root.eval-periods-chart-body-image;
