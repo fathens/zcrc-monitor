@@ -1,17 +1,38 @@
+use num_traits::ToPrimitive;
+use common::types::YoctoValue;
+
 use crate::grpc::portfolio::PortfolioHoldingItem;
 use plotters::prelude::*;
 use slint::{Image, SharedPixelBuffer};
 
-/// yoctoNEAR 文字列 (10^24 が 1 NEAR) を f64 NEAR に変換する。
-/// チャート表示用のため、精度低下は許容する。
-pub fn ynear_to_near(ynear: &str) -> f64 {
-    let digits: String = ynear.chars().filter(|c| c.is_ascii_digit()).collect();
-    if digits.is_empty() {
-        return 0.0;
+/// YoctoValue を NEAR 単位の f64 に変換する。
+fn yocto_to_f64(yocto: &YoctoValue) -> f64 {
+    yocto.to_near().as_bigdecimal().to_f64().unwrap_or(0.0)
+}
+
+/// NEAR 値をコンパクトに表示する（例: 1234567 → "1.23M"）
+pub fn format_compact(value: f64) -> String {
+    let abs = value.abs();
+    let (scaled, suffix) = if abs >= 1e18 {
+        (value / 1e18, "E")
+    } else if abs >= 1e15 {
+        (value / 1e15, "P")
+    } else if abs >= 1e12 {
+        (value / 1e12, "T")
+    } else if abs >= 1e9 {
+        (value / 1e9, "B")
+    } else if abs >= 1e6 {
+        (value / 1e6, "M")
+    } else if abs >= 1e3 {
+        (value / 1e3, "K")
+    } else {
+        (value, "")
+    };
+    if suffix.is_empty() {
+        format!("{scaled:.2}")
+    } else {
+        format!("{scaled:.2}{suffix}")
     }
-    let is_negative = ynear.starts_with('-');
-    let value = digits.parse::<f64>().unwrap_or(0.0) / 1e24;
-    if is_negative { -value } else { value }
 }
 
 /// total_value_wnear の時系列推移を折れ線グラフでレンダリングする。
@@ -31,7 +52,7 @@ pub fn render_line_chart(
         if !holdings.is_empty() {
             let values: Vec<f64> = holdings
                 .iter()
-                .map(|h| ynear_to_near(&h.total_value_wnear))
+                .map(|h| yocto_to_f64(&h.total_value_wnear))
                 .collect();
 
             let min_val = values.iter().cloned().fold(f64::INFINITY, f64::min);
@@ -51,24 +72,26 @@ pub fn render_line_chart(
             let x_max = (values.len() as f64 - 1.0).max(1.0);
 
             let mut chart = ChartBuilder::on(&root)
-                .caption("ポートフォリオ推移 (NEAR)", ("sans-serif", 14))
+                .caption("Portfolio (NEAR)", ("sans-serif", 14))
                 .margin(10)
                 .x_label_area_size(30)
-                .y_label_area_size(60)
+                .y_label_area_size(80)
                 .build_cartesian_2d(0f64..x_max, y_min..y_max)
                 .unwrap();
 
             chart
                 .configure_mesh()
-                .x_desc("スナップショット")
-                .y_desc("NEAR")
+                .light_line_style(RGBColor(255, 255, 255))
+                .x_labels(6)
+                .y_labels(6)
+                .y_label_formatter(&|v| format_compact(*v))
                 .draw()
                 .unwrap();
 
             chart
                 .draw_series(LineSeries::new(
                     values.iter().enumerate().map(|(i, &v)| (i as f64, v)),
-                    &BLUE,
+                    BLUE.stroke_width(2),
                 ))
                 .unwrap();
         }
@@ -100,7 +123,7 @@ pub fn render_bar_chart(
                     .iter()
                     .map(|th| {
                         let label = shorten_token(&th.token);
-                        let value = ynear_to_near(&th.value_wnear);
+                        let value = yocto_to_f64(&th.value_wnear);
                         (label, value)
                     })
                     .collect();
@@ -112,15 +135,16 @@ pub fn render_bar_chart(
                 let y_max = if max_val <= 0.0 { 1.0 } else { max_val * 1.2 };
 
                 let mut chart = ChartBuilder::on(&root)
-                    .caption("トークン別価値 (NEAR)", ("sans-serif", 14))
+                    .caption("Token Value (NEAR)", ("sans-serif", 14))
                     .margin(10)
                     .x_label_area_size(40)
-                    .y_label_area_size(60)
+                    .y_label_area_size(80)
                     .build_cartesian_2d(0..bar_data.len(), 0f64..y_max)
                     .unwrap();
 
                 chart
                     .configure_mesh()
+                    .light_line_style(RGBColor(255, 255, 255))
                     .x_labels(bar_data.len())
                     .x_label_formatter(&|idx| {
                         bar_data
@@ -128,7 +152,8 @@ pub fn render_bar_chart(
                             .map(|(label, _)| label.clone())
                             .unwrap_or_default()
                     })
-                    .y_desc("NEAR")
+                    .y_labels(6)
+                    .y_label_formatter(&|v| format_compact(*v))
                     .draw()
                     .unwrap();
 
@@ -156,40 +181,58 @@ fn shorten_token(token: &str) -> String {
 mod tests {
     use super::*;
 
+    fn make_yocto(s: &str) -> YoctoValue {
+        use bigdecimal::BigDecimal;
+        use std::str::FromStr;
+        YoctoValue::from_yocto(BigDecimal::from_str(s).unwrap())
+    }
+
     #[test]
-    fn ynear_to_near_one_near() {
-        let result = ynear_to_near("1000000000000000000000000");
+    fn yocto_to_f64_one_near() {
+        let result = yocto_to_f64(&make_yocto("1000000000000000000000000"));
         assert!((result - 1.0).abs() < 1e-6);
     }
 
     #[test]
-    fn ynear_to_near_zero() {
-        assert_eq!(ynear_to_near("0"), 0.0);
+    fn yocto_to_f64_zero() {
+        assert_eq!(yocto_to_f64(&YoctoValue::zero()), 0.0);
     }
 
     #[test]
-    fn ynear_to_near_empty() {
-        assert_eq!(ynear_to_near(""), 0.0);
-    }
-
-    #[test]
-    fn ynear_to_near_fractional() {
-        // 0.5 NEAR = 5 * 10^23
-        let result = ynear_to_near("500000000000000000000000");
+    fn yocto_to_f64_fractional() {
+        let result = yocto_to_f64(&make_yocto("500000000000000000000000"));
         assert!((result - 0.5).abs() < 1e-6);
     }
 
     #[test]
-    fn ynear_to_near_large_value() {
-        // 100 NEAR
-        let result = ynear_to_near("100000000000000000000000000");
+    fn yocto_to_f64_large_value() {
+        let result = yocto_to_f64(&make_yocto("100000000000000000000000000"));
         assert!((result - 100.0).abs() < 1e-3);
     }
 
     #[test]
-    fn ynear_to_near_negative() {
-        let result = ynear_to_near("-1000000000000000000000000");
-        assert!((result - (-1.0)).abs() < 1e-6);
+    fn format_compact_small() {
+        assert_eq!(format_compact(42.5), "42.50");
+    }
+
+    #[test]
+    fn format_compact_thousands() {
+        assert_eq!(format_compact(1500.0), "1.50K");
+    }
+
+    #[test]
+    fn format_compact_millions() {
+        assert_eq!(format_compact(2_500_000.0), "2.50M");
+    }
+
+    #[test]
+    fn format_compact_billions() {
+        assert_eq!(format_compact(5_856_815_104.0), "5.86B");
+    }
+
+    #[test]
+    fn format_compact_trillions() {
+        assert_eq!(format_compact(1.5e12), "1.50T");
     }
 
     #[test]
@@ -204,9 +247,6 @@ mod tests {
 
     #[test]
     fn shorten_token_long_name() {
-        assert_eq!(
-            shorten_token("usdt.tether-token.near"),
-            "usdt"
-        );
+        assert_eq!(shorten_token("usdt.tether-token.near"), "usdt");
     }
 }

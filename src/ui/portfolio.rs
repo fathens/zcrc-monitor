@@ -1,3 +1,5 @@
+use num_traits::ToPrimitive;
+
 use crate::grpc::GrpcClient;
 use crate::grpc::portfolio::{EvaluationPeriodItem, PortfolioHoldingItem, TokenHoldingItem};
 use crate::ui::chart;
@@ -144,55 +146,28 @@ fn fetch_holdings(weak: Weak<AppWindow>, client: GrpcClient, period_id: String) 
 }
 
 fn to_slint_eval_period(item: EvaluationPeriodItem) -> SlintEvaluationPeriod {
+    let near = item.initial_value.to_near();
+    let near_f64 = near.as_bigdecimal().to_f64().unwrap_or(0.0);
+    let display = chart::format_compact(near_f64);
     SlintEvaluationPeriod {
         id: item.id,
         period_id: SharedString::from(item.period_id),
         start_time: SharedString::from(item.start_time.format("%Y-%m-%d %H:%M:%S").to_string()),
-        initial_value: SharedString::from(item.initial_value),
+        initial_value: SharedString::from(format!("{display} NEAR")),
         selected_tokens: SharedString::from(item.selected_tokens.join(", ")),
     }
 }
 
-fn format_smallest_units(smallest_units: &str, decimals: u32) -> String {
-    if decimals == 0 {
-        return smallest_units.to_string();
-    }
-    let decimals = decimals as usize;
-    let is_negative = smallest_units.starts_with('-');
-    let digits: String = smallest_units
-        .chars()
-        .filter(|c| c.is_ascii_digit())
-        .collect();
-
-    if digits.is_empty() || digits.chars().all(|c| c == '0') {
-        return "0".to_string();
-    }
-
-    let (integer_part, fractional_part) = if digits.len() <= decimals {
-        let padded = format!("{:0>width$}", digits, width = decimals + 1);
-        let (i, f) = padded.split_at(padded.len() - decimals);
-        (i.to_string(), f.to_string())
-    } else {
-        let (i, f) = digits.split_at(digits.len() - decimals);
-        (i.to_string(), f.to_string())
-    };
-
-    let trimmed = fractional_part.trim_end_matches('0');
-    let prefix = if is_negative { "-" } else { "" };
-    if trimmed.is_empty() {
-        format!("{prefix}{integer_part}")
-    } else {
-        format!("{prefix}{integer_part}.{trimmed}")
-    }
-}
-
 fn to_slint_token_holding(item: TokenHoldingItem) -> SlintTokenHolding {
-    let balance_display = format_smallest_units(&item.balance, item.decimals);
-    let value_display = format_smallest_units(&item.value_wnear, 24);
+    let balance_f64 = item.balance.to_whole().to_f64().unwrap_or(0.0);
+    let balance_display = chart::format_compact(balance_f64);
+    let near = item.value_wnear.to_near();
+    let near_f64 = near.as_bigdecimal().to_f64().unwrap_or(0.0);
+    let value_display = chart::format_compact(near_f64);
     SlintTokenHolding {
         token: SharedString::from(item.token),
         balance: SharedString::from(balance_display),
-        value_wnear: SharedString::from(value_display),
+        value_wnear: SharedString::from(format!("{value_display} NEAR")),
     }
 }
 
@@ -202,11 +177,13 @@ fn to_slint_portfolio_holding(item: PortfolioHoldingItem) -> SlintPortfolioHoldi
         .into_iter()
         .map(to_slint_token_holding)
         .collect();
-    let total_display = format_smallest_units(&item.total_value_wnear, 24);
+    let near = item.total_value_wnear.to_near();
+    let near_f64 = near.as_bigdecimal().to_f64().unwrap_or(0.0);
+    let total_display = chart::format_compact(near_f64);
     SlintPortfolioHolding {
         timestamp: SharedString::from(item.timestamp.format("%Y-%m-%d %H:%M:%S").to_string()),
         token_holdings: ModelRc::new(VecModel::from(token_holdings)),
-        total_value_wnear: SharedString::from(total_display),
+        total_value_wnear: SharedString::from(format!("{total_display} NEAR")),
     }
 }
 
@@ -219,22 +196,34 @@ fn spawn(future: impl std::future::Future<Output = ()> + 'static) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bigdecimal::BigDecimal;
     use chrono::{DateTime, Utc};
+    use common::types::{TokenAmount, YoctoValue};
+    use std::str::FromStr;
+
+    fn yocto(s: &str) -> YoctoValue {
+        YoctoValue::from_yocto(BigDecimal::from_str(s).unwrap())
+    }
+
+    fn token_amount(s: &str, decimals: u8) -> TokenAmount {
+        TokenAmount::from_smallest_units(BigDecimal::from_str(s).unwrap(), decimals)
+    }
 
     #[test]
     fn to_slint_eval_period_maps_all_fields() {
+        // 19.21 NEAR = 19210000000000000000000000 yoctoNEAR
         let item = EvaluationPeriodItem {
             id: 42,
             period_id: "eval_abc123".to_string(),
             start_time: DateTime::from_timestamp(1700000000, 0).unwrap(),
-            initial_value: "1000000".to_string(),
+            initial_value: yocto("19210000000000000000000000"),
             selected_tokens: vec!["token1".to_string(), "token2".to_string()],
         };
         let slint = to_slint_eval_period(item);
         assert_eq!(slint.id, 42);
         assert_eq!(slint.period_id, "eval_abc123");
         assert_eq!(slint.start_time, "2023-11-14 22:13:20");
-        assert_eq!(slint.initial_value, "1000000");
+        assert_eq!(slint.initial_value, "19.21 NEAR");
         assert_eq!(slint.selected_tokens, "token1, token2");
     }
 
@@ -244,7 +233,7 @@ mod tests {
             id: 1,
             period_id: "eval_empty".to_string(),
             start_time: DateTime::<Utc>::default(),
-            initial_value: "0".to_string(),
+            initial_value: YoctoValue::zero(),
             selected_tokens: vec![],
         };
         let slint = to_slint_eval_period(item);
@@ -252,30 +241,16 @@ mod tests {
     }
 
     #[test]
-    fn to_slint_eval_period_single_token() {
-        let item = EvaluationPeriodItem {
-            id: 2,
-            period_id: "eval_single".to_string(),
-            start_time: DateTime::from_timestamp(0, 0).unwrap(),
-            initial_value: "500".to_string(),
-            selected_tokens: vec!["only_one".to_string()],
-        };
-        let slint = to_slint_eval_period(item);
-        assert_eq!(slint.selected_tokens, "only_one");
-    }
-
-    #[test]
     fn to_slint_token_holding_maps_fields() {
         let item = TokenHoldingItem {
             token: "wrap.near".to_string(),
-            balance: "1000000000000000000000000".to_string(),
-            decimals: 24,
-            value_wnear: "1000000000000000000000000".to_string(),
+            balance: token_amount("1000000000000000000000000", 24),
+            value_wnear: yocto("1000000000000000000000000"),
         };
         let slint = to_slint_token_holding(item);
         assert_eq!(slint.token, "wrap.near");
-        assert_eq!(slint.balance, "1"); // 1e24 / 10^24 = 1
-        assert_eq!(slint.value_wnear, "1"); // 1e24 yoctoNEAR = 1 NEAR
+        assert_eq!(slint.balance, "1.00");
+        assert_eq!(slint.value_wnear, "1.00 NEAR");
     }
 
     #[test]
@@ -285,26 +260,26 @@ mod tests {
             token_holdings: vec![
                 TokenHoldingItem {
                     token: "wrap.near".to_string(),
-                    balance: "100".to_string(),
-                    decimals: 24,
-                    value_wnear: "100".to_string(),
+                    balance: token_amount("1000000000000000000000000", 24),
+                    value_wnear: yocto("1000000000000000000000000"),
                 },
                 TokenHoldingItem {
                     token: "usdt.tether-token.near".to_string(),
-                    balance: "5000000".to_string(),
-                    decimals: 6,
-                    value_wnear: "200".to_string(),
+                    balance: token_amount("5000000", 6),
+                    value_wnear: yocto("2000000000000000000000000"),
                 },
             ],
-            total_value_wnear: "300".to_string(),
+            total_value_wnear: yocto("3000000000000000000000000"),
         };
         let slint = to_slint_portfolio_holding(item);
         assert_eq!(slint.timestamp, "2023-11-14 22:13:20");
         assert_eq!(slint.token_holdings.row_count(), 2);
         let th0 = slint.token_holdings.row_data(0).unwrap();
         assert_eq!(th0.token, "wrap.near");
+        assert_eq!(th0.value_wnear, "1.00 NEAR");
         let th1 = slint.token_holdings.row_data(1).unwrap();
         assert_eq!(th1.token, "usdt.tether-token.near");
+        assert_eq!(th1.balance, "5.00");
     }
 
     #[test]
@@ -312,47 +287,10 @@ mod tests {
         let item = PortfolioHoldingItem {
             timestamp: DateTime::<Utc>::default(),
             token_holdings: vec![],
-            total_value_wnear: "0".to_string(),
+            total_value_wnear: YoctoValue::zero(),
         };
         let slint = to_slint_portfolio_holding(item);
         assert_eq!(slint.token_holdings.row_count(), 0);
-        assert_eq!(slint.total_value_wnear, "0");
-    }
-
-    #[test]
-    fn format_smallest_units_whole_number() {
-        // 1 NEAR = 10^24 yoctoNEAR
-        assert_eq!(format_smallest_units("1000000000000000000000000", 24), "1");
-    }
-
-    #[test]
-    fn format_smallest_units_fractional() {
-        // 1.5 NEAR
-        assert_eq!(
-            format_smallest_units("1500000000000000000000000", 24),
-            "1.5"
-        );
-    }
-
-    #[test]
-    fn format_smallest_units_small_value() {
-        // 0.001 NEAR
-        assert_eq!(format_smallest_units("1000000000000000000000", 24), "0.001");
-    }
-
-    #[test]
-    fn format_smallest_units_usdt() {
-        // 5 USDT (decimals = 6)
-        assert_eq!(format_smallest_units("5000000", 6), "5");
-    }
-
-    #[test]
-    fn format_smallest_units_zero() {
-        assert_eq!(format_smallest_units("0", 24), "0");
-    }
-
-    #[test]
-    fn format_smallest_units_no_decimals() {
-        assert_eq!(format_smallest_units("42", 0), "42");
+        assert_eq!(slint.total_value_wnear, "0.00 NEAR");
     }
 }

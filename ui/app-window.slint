@@ -71,6 +71,7 @@ export component AppWindow inherits Window {
 
     in property <image> line-chart-image;
     in property <image> bar-chart-image;
+    in-out property <int> chart-mode: 0; // 0=全体推移, 1=トークン別
 
     callback config-refresh();
     callback config-select-entry(/* index */ int);
@@ -539,19 +540,29 @@ export component AppWindow inherits Window {
 
                     if root.line-chart-image.width > 0 || root.bar-chart-image.width > 0 : HorizontalLayout {
                         spacing: 8px;
-                        height: 260px;
+                        alignment: start;
 
-                        if root.line-chart-image.width > 0 : Image {
-                            source: root.line-chart-image;
-                            horizontal-stretch: 1;
-                            image-fit: contain;
+                        Button {
+                            text: root.chart-mode == 0 ? "[全体推移]" : "全体推移";
+                            clicked => { root.chart-mode = 0; }
                         }
 
-                        if root.bar-chart-image.width > 0 : Image {
-                            source: root.bar-chart-image;
-                            horizontal-stretch: 1;
-                            image-fit: contain;
+                        Button {
+                            text: root.chart-mode == 1 ? "[トークン別]" : "トークン別";
+                            clicked => { root.chart-mode = 1; }
                         }
+                    }
+
+                    if root.chart-mode == 0 && root.line-chart-image.width > 0 : Image {
+                        source: root.line-chart-image;
+                        height: 280px;
+                        image-fit: contain;
+                    }
+
+                    if root.chart-mode == 1 && root.bar-chart-image.width > 0 : Image {
+                        source: root.bar-chart-image;
+                        height: 280px;
+                        image-fit: contain;
                     }
 
                     // === Holdings Table ===

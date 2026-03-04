@@ -1,27 +1,38 @@
+use bigdecimal::BigDecimal;
+use common::types::{TokenAmount, YoctoValue};
+use std::str::FromStr;
+
 use super::GrpcClient;
 use super::proto::portfolio_service_client::PortfolioServiceClient;
 use super::proto::{GetEvaluationPeriodsRequest, GetPortfolioHoldingsRequest};
 use chrono::{DateTime, Utc};
 
+fn parse_yocto(s: &str) -> YoctoValue {
+    YoctoValue::from_yocto(BigDecimal::from_str(s).unwrap_or_default())
+}
+
+fn parse_token_amount(s: &str, decimals: u32) -> TokenAmount {
+    TokenAmount::from_smallest_units(BigDecimal::from_str(s).unwrap_or_default(), decimals as u8)
+}
+
 pub struct EvaluationPeriodItem {
     pub id: i32,
     pub period_id: String,
     pub start_time: DateTime<Utc>,
-    pub initial_value: String,
+    pub initial_value: YoctoValue,
     pub selected_tokens: Vec<String>,
 }
 
 pub struct TokenHoldingItem {
     pub token: String,
-    pub balance: String,
-    pub decimals: u32,
-    pub value_wnear: String,
+    pub balance: TokenAmount,
+    pub value_wnear: YoctoValue,
 }
 
 pub struct PortfolioHoldingItem {
     pub timestamp: DateTime<Utc>,
     pub token_holdings: Vec<TokenHoldingItem>,
-    pub total_value_wnear: String,
+    pub total_value_wnear: YoctoValue,
 }
 
 fn timestamp_to_datetime(ts: prost_types::Timestamp) -> DateTime<Utc> {
@@ -33,7 +44,7 @@ fn proto_to_item(ep: super::proto::EvaluationPeriod) -> EvaluationPeriodItem {
         id: ep.id,
         period_id: ep.period_id,
         start_time: ep.start_time.map(timestamp_to_datetime).unwrap_or_default(),
-        initial_value: ep.initial_value,
+        initial_value: parse_yocto(&ep.initial_value),
         selected_tokens: ep.selected_tokens,
     }
 }
@@ -41,9 +52,8 @@ fn proto_to_item(ep: super::proto::EvaluationPeriod) -> EvaluationPeriodItem {
 fn proto_to_token_holding(th: super::proto::TokenHolding) -> TokenHoldingItem {
     TokenHoldingItem {
         token: th.token,
-        balance: th.balance,
-        decimals: th.decimals,
-        value_wnear: th.value_wnear,
+        balance: parse_token_amount(&th.balance, th.decimals),
+        value_wnear: parse_yocto(&th.value_wnear),
     }
 }
 
@@ -55,7 +65,7 @@ fn proto_to_portfolio_holding(h: super::proto::PortfolioHolding) -> PortfolioHol
             .into_iter()
             .map(proto_to_token_holding)
             .collect(),
-        total_value_wnear: h.total_value_wnear,
+        total_value_wnear: parse_yocto(&h.total_value_wnear),
     }
 }
 
@@ -146,7 +156,7 @@ mod tests {
         let item = proto_to_item(proto);
         assert_eq!(item.id, 42);
         assert_eq!(item.period_id, "eval_test");
-        assert_eq!(item.initial_value, "123456");
+        assert_eq!(item.initial_value, parse_yocto("123456"));
         assert_eq!(item.selected_tokens, vec!["a", "b"]);
         assert_eq!(item.start_time.timestamp(), 1700000000);
     }
@@ -174,9 +184,11 @@ mod tests {
         };
         let item = proto_to_token_holding(proto);
         assert_eq!(item.token, "wrap.near");
-        assert_eq!(item.balance, "1000000000000000000000000");
-        assert_eq!(item.decimals, 24);
-        assert_eq!(item.value_wnear, "1000000000000000000000000");
+        assert_eq!(
+            item.balance,
+            parse_token_amount("1000000000000000000000000", 24)
+        );
+        assert_eq!(item.value_wnear, parse_yocto("1000000000000000000000000"));
     }
 
     #[test]
@@ -207,7 +219,7 @@ mod tests {
         assert_eq!(item.token_holdings.len(), 2);
         assert_eq!(item.token_holdings[0].token, "wrap.near");
         assert_eq!(item.token_holdings[1].token, "usdt.tether-token.near");
-        assert_eq!(item.total_value_wnear, "300");
+        assert_eq!(item.total_value_wnear, parse_yocto("300"));
     }
 
     #[test]
