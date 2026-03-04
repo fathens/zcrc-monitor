@@ -6,6 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let protos = &[
         "zaciraci/crates/web/proto/zaciraci/v1/health.proto",
         "zaciraci/crates/web/proto/zaciraci/v1/config.proto",
+        "zaciraci/crates/web/proto/zaciraci/v1/portfolio.proto",
     ];
     tonic_prost_build::configure()
         .build_server(false)

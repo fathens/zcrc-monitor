@@ -13,6 +13,12 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 async-compat = "0.2"
+prost-types = "0.14"
+chrono = "0.4"
+plotters = { version = "0.3", default-features = false, features = ["bitmap_backend", "line_series", "bitmap_encoder", "ttf"] }
+common = { path = "zaciraci/crates/common" }
+bigdecimal = "0.4"
+num-traits = "0.2"
 
 [build-dependencies]
 slint-build = "1.15"
