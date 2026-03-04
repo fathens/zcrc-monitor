@@ -1,5 +1,5 @@
 import { Button, ListView } from "std-widgets.slint";
-import { SlintEvaluationPeriod, SlintPortfolioHolding } from "types.slint";
+import { SlintEvaluationPeriod, SlintPortfolioHolding, SlintChartZone } from "types.slint";
 
 export component PortfolioTab inherits VerticalLayout {
     padding: 8px;
@@ -23,6 +23,7 @@ export component PortfolioTab inherits VerticalLayout {
     in property <image> line-chart-image;
     in property <image> bar-chart-image;
     in-out property <int> chart-mode: 0; // 0=全体推移, 1=トークン別
+    in property <[SlintChartZone]> chart-zones: [];
 
     callback eval-periods-refresh();
     callback eval-period-select(/* index */ int);
@@ -80,13 +81,16 @@ export component PortfolioTab inherits VerticalLayout {
                 image-fit: fill;
             }
 
-            // ホバー縦バー
-            if chart-body-ta.has-hover : Rectangle {
-                x: chart-body-ta.mouse-x - 1px;
+            // ホバーゾーンハイライト（リアクティブ：mouse-x でゾーン自動判定）
+            for zone in root.chart-zones : Rectangle {
+                x: zone.start * 1px;
                 y: 0;
-                width: 2px;
+                width: (zone.end - zone.start) * 1px;
                 height: 150px;
-                background: #1976d280;
+                background: chart-body-ta.has-hover
+                    && chart-body-ta.mouse-x >= zone.start * 1px
+                    && chart-body-ta.mouse-x < zone.end * 1px
+                    ? #1976d220 : transparent;
             }
 
             chart-body-ta := TouchArea {

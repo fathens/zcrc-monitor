@@ -1,9 +1,9 @@
 import { TabWidget } from "std-widgets.slint";
-import { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding } from "types.slint";
+import { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding, SlintChartZone } from "types.slint";
 import { SettingsTab } from "settings-tab.slint";
 import { PortfolioTab } from "portfolio-tab.slint";
 
-export { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding }
+export { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding, SlintChartZone }
 
 export component AppWindow inherits Window {
     title: "zcrc-monitor";
@@ -49,6 +49,7 @@ export component AppWindow inherits Window {
     in property <image> line-chart-image <=> portfolio.line-chart-image;
     in property <image> bar-chart-image <=> portfolio.bar-chart-image;
     in-out property <int> chart-mode <=> portfolio.chart-mode;
+    in property <[SlintChartZone]> chart-zones <=> portfolio.chart-zones;
 
     // Callbacks forwarded to sub-components
     callback config-refresh <=> settings.config-refresh;

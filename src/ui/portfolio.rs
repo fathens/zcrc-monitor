@@ -5,10 +5,10 @@ use std::rc::Rc;
 use crate::grpc::GrpcClient;
 use crate::grpc::portfolio::{EvaluationPeriodItem, PortfolioHoldingItem, TokenHoldingItem};
 use crate::ui::chart;
-use crate::{AppWindow, SlintEvaluationPeriod, SlintPortfolioHolding, SlintTokenHolding};
+use crate::{AppWindow, SlintChartZone, SlintEvaluationPeriod, SlintPortfolioHolding, SlintTokenHolding};
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel, Weak};
 
-/// チャートクリック時に必要なメタデータ
+/// チャートクリック・ホバー時に必要なメタデータ
 #[derive(Default)]
 struct ChartClickInfo {
     plot_width: u32,
@@ -16,6 +16,8 @@ struct ChartClickInfo {
     x_max: i64,
     /// (timestamp, 元の periods 配列のインデックス)
     sorted_points: Vec<(i64, usize)>,
+    /// 各ポイントのゾーン境界 (zone_start_px, zone_end_px)
+    zone_boundaries: Vec<(f64, f64)>,
 }
 
 pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
@@ -125,6 +127,43 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     });
 }
 
+/// 各データポイントのゾーン境界（ピクセル座標）を計算する。
+/// 隣接するポイントとの中間点をゾーン境界とする。
+fn calc_zone_boundaries(info: &ChartClickInfo) -> Vec<(f64, f64)> {
+    if info.sorted_points.is_empty() || info.plot_width == 0 {
+        return vec![];
+    }
+    let pw = info.plot_width as f64;
+    let range = (info.x_max - info.x_min) as f64;
+    if range <= 0.0 {
+        return vec![(0.0, pw)];
+    }
+
+    // 各ポイントのピクセルX座標
+    let positions: Vec<f64> = info
+        .sorted_points
+        .iter()
+        .map(|&(ts, _)| (ts - info.x_min) as f64 / range * pw)
+        .collect();
+
+    let n = positions.len();
+    let mut zones = Vec::with_capacity(n);
+    for i in 0..n {
+        let start = if i == 0 {
+            0.0
+        } else {
+            (positions[i - 1] + positions[i]) / 2.0
+        };
+        let end = if i == n - 1 {
+            pw
+        } else {
+            (positions[i] + positions[i + 1]) / 2.0
+        };
+        zones.push((start, end));
+    }
+    zones
+}
+
 fn clear_holdings(app: &AppWindow) {
     app.set_eval_period_holdings(ModelRc::new(VecModel::<SlintPortfolioHolding>::default()));
     app.set_eval_period_holdings_error("".into());
@@ -163,13 +202,25 @@ fn refresh_eval_periods(
                 app.set_eval_periods_chart_body_image(periods_chart.body);
                 app.set_eval_periods_chart_width(periods_chart.body_width as i32);
 
-                // クリック判定用メタデータを保存
+                // クリック・ホバー判定用メタデータを保存
                 {
                     let mut info = click_info.borrow_mut();
                     info.plot_width = periods_chart.plot_width;
                     info.x_min = periods_chart.x_min;
                     info.x_max = periods_chart.x_max;
                     info.sorted_points = periods_chart.sorted_points;
+                    info.zone_boundaries = calc_zone_boundaries(&info);
+
+                    // ゾーン境界を Slint モデルとして設定
+                    let slint_zones: Vec<SlintChartZone> = info
+                        .zone_boundaries
+                        .iter()
+                        .map(|&(start, end)| SlintChartZone {
+                            start: start as f32,
+                            end: end as f32,
+                        })
+                        .collect();
+                    app.set_chart_zones(ModelRc::new(VecModel::from(slint_zones)));
                 }
 
                 // 最新の期間を自動選択してホールディングをフェッチ
