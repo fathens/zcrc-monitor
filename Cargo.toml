@@ -15,6 +15,7 @@ tracing-subscriber = "0.3"
 async-compat = "0.2"
 prost-types = "0.14"
 chrono = "0.4"
+plotters = { version = "0.3", default-features = false, features = ["bitmap_backend", "line_series", "bitmap_encoder"] }
 
 [build-dependencies]
 slint-build = "1.15"
