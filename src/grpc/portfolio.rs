@@ -1,6 +1,6 @@
 use super::GrpcClient;
 use super::proto::portfolio_service_client::PortfolioServiceClient;
-use super::proto::{GetEvaluationPeriodRequest, GetEvaluationPeriodsRequest};
+use super::proto::GetEvaluationPeriodsRequest;
 use chrono::{DateTime, Utc};
 
 pub struct EvaluationPeriodItem {
@@ -39,21 +39,6 @@ pub async fn get_evaluation_periods(
     let inner = response.into_inner();
     let items = inner.periods.into_iter().map(proto_to_item).collect();
     Ok((items, inner.total_count))
-}
-
-pub async fn get_evaluation_period(
-    client: &GrpcClient,
-    period_id: &str,
-) -> Result<Option<EvaluationPeriodItem>, String> {
-    let channel = client.channel().await.map_err(|e| format!("{e:?}"))?;
-    let mut svc = PortfolioServiceClient::new(channel);
-    let response = svc
-        .get_evaluation_period(GetEvaluationPeriodRequest {
-            period_id: period_id.to_string(),
-        })
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    Ok(response.into_inner().period.map(proto_to_item))
 }
 
 #[cfg(test)]
