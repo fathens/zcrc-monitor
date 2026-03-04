@@ -423,4 +423,121 @@ mod tests {
         assert_eq!(slint.token_holdings.row_count(), 0);
         assert_eq!(slint.total_value_wnear, "0.00 NEAR");
     }
+
+    // --- calc_zone_boundaries tests ---
+
+    fn make_click_info(
+        plot_width: u32,
+        x_min: i64,
+        x_max: i64,
+        sorted_points: Vec<(i64, usize)>,
+    ) -> ChartClickInfo {
+        ChartClickInfo {
+            plot_width,
+            x_min,
+            x_max,
+            sorted_points,
+            zone_boundaries: vec![],
+        }
+    }
+
+    #[test]
+    fn zone_boundaries_empty_points() {
+        let info = make_click_info(400, 0, 100, vec![]);
+        assert!(calc_zone_boundaries(&info).is_empty());
+    }
+
+    #[test]
+    fn zone_boundaries_zero_plot_width() {
+        let info = make_click_info(0, 0, 100, vec![(50, 0)]);
+        assert!(calc_zone_boundaries(&info).is_empty());
+    }
+
+    #[test]
+    fn zone_boundaries_single_point() {
+        let info = make_click_info(400, 0, 100, vec![(50, 0)]);
+        let zones = calc_zone_boundaries(&info);
+        // 1ポイントの場合、ゾーンは全幅
+        assert_eq!(zones.len(), 1);
+        assert!((zones[0].0 - 0.0).abs() < f64::EPSILON);
+        assert!((zones[0].1 - 400.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn zone_boundaries_same_timestamps() {
+        // x_min == x_max の場合、range <= 0 で全幅1ゾーン
+        let info = make_click_info(400, 100, 100, vec![(100, 0)]);
+        let zones = calc_zone_boundaries(&info);
+        assert_eq!(zones.len(), 1);
+        assert!((zones[0].0 - 0.0).abs() < f64::EPSILON);
+        assert!((zones[0].1 - 400.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn zone_boundaries_two_points_equal_spacing() {
+        // 0 と 100 の2ポイント、plot_width=400
+        // 位置: 0px, 400px → ゾーン: [0, 200), [200, 400)
+        let info = make_click_info(400, 0, 100, vec![(0, 0), (100, 1)]);
+        let zones = calc_zone_boundaries(&info);
+        assert_eq!(zones.len(), 2);
+        assert!((zones[0].0 - 0.0).abs() < f64::EPSILON);
+        assert!((zones[0].1 - 200.0).abs() < f64::EPSILON);
+        assert!((zones[1].0 - 200.0).abs() < f64::EPSILON);
+        assert!((zones[1].1 - 400.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn zone_boundaries_three_points() {
+        // 0, 50, 100 の3ポイント、plot_width=400
+        // 位置: 0px, 200px, 400px
+        // ゾーン: [0, 100), [100, 300), [300, 400)
+        let info = make_click_info(400, 0, 100, vec![(0, 0), (50, 1), (100, 2)]);
+        let zones = calc_zone_boundaries(&info);
+        assert_eq!(zones.len(), 3);
+        assert!((zones[0].0 - 0.0).abs() < f64::EPSILON);
+        assert!((zones[0].1 - 100.0).abs() < f64::EPSILON);
+        assert!((zones[1].0 - 100.0).abs() < f64::EPSILON);
+        assert!((zones[1].1 - 300.0).abs() < f64::EPSILON);
+        assert!((zones[2].0 - 300.0).abs() < f64::EPSILON);
+        assert!((zones[2].1 - 400.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn zone_boundaries_uneven_spacing() {
+        // 0, 20, 100 の3ポイント、plot_width=500
+        // 位置: 0px, 100px, 500px
+        // ゾーン: [0, 50), [50, 300), [300, 500)
+        let info = make_click_info(500, 0, 100, vec![(0, 0), (20, 1), (100, 2)]);
+        let zones = calc_zone_boundaries(&info);
+        assert_eq!(zones.len(), 3);
+        assert!((zones[0].0 - 0.0).abs() < f64::EPSILON);
+        assert!((zones[0].1 - 50.0).abs() < f64::EPSILON);
+        assert!((zones[1].0 - 50.0).abs() < f64::EPSILON);
+        assert!((zones[1].1 - 300.0).abs() < f64::EPSILON);
+        assert!((zones[2].0 - 300.0).abs() < f64::EPSILON);
+        assert!((zones[2].1 - 500.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn zone_boundaries_are_contiguous() {
+        // ゾーン間にギャップがないことを確認
+        let info = make_click_info(600, 0, 300, vec![(0, 0), (100, 1), (200, 2), (300, 3)]);
+        let zones = calc_zone_boundaries(&info);
+        assert_eq!(zones.len(), 4);
+        // 最初のゾーンは0から
+        assert!((zones[0].0 - 0.0).abs() < f64::EPSILON);
+        // 最後のゾーンはplot_widthまで
+        assert!((zones[3].1 - 600.0).abs() < f64::EPSILON);
+        // 各ゾーンの end == 次のゾーンの start
+        for i in 0..zones.len() - 1 {
+            assert!(
+                (zones[i].1 - zones[i + 1].0).abs() < f64::EPSILON,
+                "Gap between zone {} and {}: {} vs {}",
+                i,
+                i + 1,
+                zones[i].1,
+                zones[i + 1].0
+            );
+        }
+    }
 }
