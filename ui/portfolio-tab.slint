@@ -82,35 +82,28 @@ export component PortfolioTab inherits VerticalLayout {
                 spacing: 2px;
 
                 HorizontalLayout {
-                    spacing: 16px;
-
-                    Text {
-                        text: ep.period-id;
-                        font-weight: 500;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                        overflow: elide;
-                    }
+                    spacing: 8px;
 
                     Text {
                         text: ep.start-time;
-                        color: #555555;
-                        font-size: 12px;
+                        font-weight: 500;
+                        font-size: 13px;
                         vertical-alignment: center;
                     }
 
                     Text {
                         text: ep.initial-value;
                         color: #1976d2;
-                        font-size: 12px;
+                        font-size: 13px;
                         vertical-alignment: center;
                     }
                 }
 
                 if root.eval-period-selected-index == index : Text {
-                    text: "トークン: " + ep.selected-tokens;
+                    text: ep.selected-tokens;
                     color: #666666;
                     font-size: 11px;
+                    wrap: word-wrap;
                 }
             }
         }
