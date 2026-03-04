@@ -52,8 +52,8 @@ pub struct EvalPeriodsChart {
 // チャート共通の縦レイアウト定数
 const CHART_MARGIN_TOP: u32 = 5;
 const CHART_X_LABEL_SIZE: u32 = 30;
-const CHART_Y_LABEL_SIZE: u32 = 60;
-const Y_AXIS_WIDTH: u32 = 80;
+const CHART_Y_LABEL_SIZE: u32 = 55;
+const Y_AXIS_WIDTH: u32 = 65;
 
 /// Y 軸範囲を計算する。
 fn calc_y_range(values: &[f64]) -> (f64, f64) {
@@ -120,8 +120,8 @@ pub fn render_eval_periods_chart(
             let mut chart = ChartBuilder::on(&root)
                 .margin_top(CHART_MARGIN_TOP)
                 .margin_bottom(0)
-                .margin_left(5)
-                .margin_right(5)
+                .margin_left(0)
+                .margin_right(0)
                 .y_label_area_size(CHART_Y_LABEL_SIZE)
                 .x_label_area_size(CHART_X_LABEL_SIZE)
                 .build_cartesian_2d(0f64..1f64, y_min..y_max)
@@ -132,7 +132,8 @@ pub fn render_eval_periods_chart(
                 .disable_x_mesh()
                 .disable_y_mesh()
                 .x_labels(0)
-                .y_labels(5)
+                .y_labels(4)
+                .y_label_style(("sans-serif", 11))
                 .y_label_formatter(&|v| format_compact(*v))
                 .draw()
                 .unwrap();
