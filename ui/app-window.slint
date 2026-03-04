@@ -13,6 +13,14 @@ export struct SlintKeyDefinition {
     resolved-value: string,
 }
 
+export struct SlintEvaluationPeriod {
+    id: int,
+    period-id: string,
+    start-time: string,
+    initial-value: string,
+    selected-tokens: string,
+}
+
 export component AppWindow inherits Window {
     title: "zcrc-monitor";
     preferred-width: 800px;
@@ -37,11 +45,24 @@ export component AppWindow inherits Window {
     in property <string> key-definitions-error: "";
     in-out property <bool> key-definitions-expanded: false;
 
+    in property <[SlintEvaluationPeriod]> eval-periods: [];
+    in property <string> eval-periods-error: "";
+    in property <bool> eval-periods-loaded: false;
+    in-out property <int> eval-period-selected-index: -1;
+    in-out property <int> eval-periods-page: 0;
+    in property <int> eval-periods-total-count: 0;
+    in-out property <int> eval-periods-page-size: 20;
+
     callback config-refresh();
     callback config-select-entry(/* index */ int);
     callback config-upsert(/* key */ string, /* value */ string);
     callback config-delete(/* key */ string);
     callback config-cancel-edit();
+
+    callback eval-periods-refresh();
+    callback eval-period-select(/* index */ int);
+    callback eval-periods-next-page();
+    callback eval-periods-prev-page();
 
     VerticalLayout {
         padding: 16px;
@@ -359,6 +380,125 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
+            }
+        }
+
+        // === Portfolio: Evaluation Periods ===
+        Rectangle {
+            height: 1px;
+            background: #cccccc;
+        }
+
+        Text {
+            text: "評価期間";
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+
+            Button {
+                text: "更新";
+                clicked => { root.eval-periods-refresh(); }
+            }
+
+            if root.eval-periods-loaded : Text {
+                text: "全 " + root.eval-periods-total-count + " 件";
+                vertical-alignment: center;
+                color: #888888;
+            }
+        }
+
+        if root.eval-periods-error != "" : Text {
+            text: root.eval-periods-error;
+            color: #f44336;
+        }
+
+        if root.eval-periods-loaded && root.eval-periods.length == 0 : Text {
+            text: "評価期間がありません";
+            color: #9e9e9e;
+            horizontal-alignment: center;
+        }
+
+        if root.eval-periods.length > 0 : ListView {
+            vertical-stretch: 1;
+
+            for ep[index] in root.eval-periods : Rectangle {
+                background: root.eval-period-selected-index == index ? #e8f0fe
+                    : ep-touch.has-hover ? #e3f2fd
+                    : Math.mod(index, 2) == 0 ? #f8f8f8
+                    : transparent;
+
+                ep-touch := TouchArea {
+                    clicked => {
+                        root.eval-period-select(index);
+                    }
+                }
+
+                VerticalLayout {
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 2px;
+
+                    HorizontalLayout {
+                        spacing: 16px;
+
+                        Text {
+                            text: ep.period-id;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            text: ep.start-time;
+                            color: #555555;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: ep.initial-value;
+                            color: #1976d2;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    if root.eval-period-selected-index == index : Text {
+                        text: "トークン: " + ep.selected-tokens;
+                        color: #666666;
+                        font-size: 11px;
+                    }
+                }
+            }
+        }
+
+        // Pagination controls
+        if root.eval-periods-loaded : HorizontalLayout {
+            spacing: 8px;
+            alignment: center;
+
+            Button {
+                text: "前へ";
+                enabled: root.eval-periods-page > 0;
+                clicked => { root.eval-periods-prev-page(); }
+            }
+
+            Text {
+                text: "ページ " + (root.eval-periods-page + 1);
+                vertical-alignment: center;
+            }
+
+            Button {
+                text: "次へ";
+                enabled: (root.eval-periods-page + 1) * root.eval-periods-page-size < root.eval-periods-total-count;
+                clicked => { root.eval-periods-next-page(); }
             }
         }
     }
