@@ -1,5 +1,5 @@
-use num_traits::ToPrimitive;
 use common::types::YoctoValue;
+use num_traits::ToPrimitive;
 
 use crate::grpc::portfolio::{EvaluationPeriodItem, PortfolioHoldingItem};
 use plotters::prelude::*;
@@ -95,7 +95,13 @@ pub fn render_eval_periods_chart(
     let mut data: Vec<(i64, f64, usize)> = periods
         .iter()
         .enumerate()
-        .map(|(idx, p)| (p.start_time.timestamp(), yocto_to_f64(&p.initial_value), idx))
+        .map(|(idx, p)| {
+            (
+                p.start_time.timestamp(),
+                yocto_to_f64(&p.initial_value),
+                idx,
+            )
+        })
         .collect();
     data.sort_by_key(|(ts, _, _)| *ts);
 
@@ -209,11 +215,7 @@ pub fn render_eval_periods_chart(
 }
 
 /// total_value_wnear の時系列推移を折れ線グラフでレンダリングする。
-pub fn render_line_chart(
-    holdings: &[PortfolioHoldingItem],
-    width: u32,
-    height: u32,
-) -> Image {
+pub fn render_line_chart(holdings: &[PortfolioHoldingItem], width: u32, height: u32) -> Image {
     let mut pixel_buffer = SharedPixelBuffer::new(width, height);
     let size = (width, height);
 
@@ -271,9 +273,12 @@ pub fn render_line_chart(
 
             // データポイントにマーカーを描画
             chart
-                .draw_series(values.iter().enumerate().map(|(i, &v)| {
-                    Circle::new((i as f64, v), 4, BLUE.filled())
-                }))
+                .draw_series(
+                    values
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &v)| Circle::new((i as f64, v), 4, BLUE.filled())),
+                )
                 .unwrap();
         }
 

@@ -5,7 +5,9 @@ use std::rc::Rc;
 use crate::grpc::GrpcClient;
 use crate::grpc::portfolio::{EvaluationPeriodItem, PortfolioHoldingItem, TokenHoldingItem};
 use crate::ui::chart;
-use crate::{AppWindow, SlintChartZone, SlintEvaluationPeriod, SlintPortfolioHolding, SlintTokenHolding};
+use crate::{
+    AppWindow, SlintChartZone, SlintEvaluationPeriod, SlintPortfolioHolding, SlintTokenHolding,
+};
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel, Weak};
 
 /// チャートクリック・ホバー時に必要なメタデータ
