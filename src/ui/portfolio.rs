@@ -100,14 +100,24 @@ fn refresh_eval_periods(weak: Weak<AppWindow>, client: GrpcClient, page: i32, pa
         };
         match result {
             Ok((items, total_count)) => {
-                let periods_chart = chart::render_eval_periods_chart(&items, 400, 150);
+                let periods_chart = chart::render_eval_periods_chart(&items, 150);
+                app.set_eval_periods_y_axis_image(periods_chart.y_axis);
+                app.set_eval_periods_chart_body_image(periods_chart.body);
+                app.set_eval_periods_chart_width(periods_chart.body_width as i32);
+
+                // 最新の期間を自動選択してホールディングをフェッチ
+                if let Some(first) = items.first() {
+                    let period_id = first.period_id.clone();
+                    app.set_eval_period_selected_index(0);
+                    fetch_holdings(weak.clone(), client.clone(), period_id);
+                }
+
                 let slint_items: Vec<SlintEvaluationPeriod> =
                     items.into_iter().map(to_slint_eval_period).collect();
                 app.set_eval_periods(ModelRc::new(VecModel::from(slint_items)));
                 app.set_eval_periods_total_count(total_count as i32);
                 app.set_eval_periods_loaded(true);
                 app.set_eval_periods_error("".into());
-                app.set_eval_periods_chart_image(periods_chart);
                 tracing::debug!("Evaluation periods loaded: page={page}, total={total_count}");
             }
             Err(e) => {

@@ -35,55 +35,116 @@ pub fn format_compact(value: f64) -> String {
     }
 }
 
-/// 評価期間の initial_value を時系列折れ線グラフでレンダリングする。
+/// 評価期間チャートの描画結果
+pub struct EvalPeriodsChart {
+    pub y_axis: Image,
+    pub body: Image,
+    pub body_width: u32,
+}
+
+// チャート共通の縦レイアウト定数
+const CHART_MARGIN_TOP: u32 = 5;
+const CHART_X_LABEL_SIZE: u32 = 30;
+const CHART_Y_LABEL_SIZE: u32 = 60;
+const Y_AXIS_WIDTH: u32 = 70;
+
+/// Y 軸範囲を計算する。
+fn calc_y_range(values: &[f64]) -> (f64, f64) {
+    let min_val = values.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max_val = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let margin = (max_val - min_val).abs() * 0.1;
+    let y_min = if (max_val - min_val).abs() < f64::EPSILON {
+        min_val - 1.0
+    } else {
+        (min_val - margin).min(0.0)
+    };
+    let y_max = if (max_val - min_val).abs() < f64::EPSILON {
+        max_val + 1.0
+    } else {
+        max_val + margin
+    };
+    (y_min, y_max)
+}
+
+/// 評価期間の initial_value を横スクロール折れ線グラフでレンダリングする。
+/// Y軸ストリップ（固定表示用）と本体（Flickable 内）の2画像を返す。
 pub fn render_eval_periods_chart(
     periods: &[EvaluationPeriodItem],
-    width: u32,
     height: u32,
-) -> Image {
-    let mut pixel_buffer = SharedPixelBuffer::new(width, height);
-    let size = (width, height);
+) -> EvalPeriodsChart {
+    if periods.is_empty() {
+        return EvalPeriodsChart {
+            y_axis: Image::default(),
+            body: Image::default(),
+            body_width: 0,
+        };
+    }
 
-    {
-        let backend = BitMapBackend::with_buffer(pixel_buffer.make_mut_bytes(), size);
-        let root = backend.into_drawing_area();
-        root.fill(&WHITE).unwrap();
+    // データ準備（古い→新しい順）
+    let mut data: Vec<(i64, f64)> = periods
+        .iter()
+        .map(|p| (p.start_time.timestamp(), yocto_to_f64(&p.initial_value)))
+        .collect();
+    data.sort_by_key(|(ts, _)| *ts);
 
-        if !periods.is_empty() {
-            // 時間順にソート済みの値を収集（古い→新しい）
-            let mut data: Vec<(i64, f64)> = periods
-                .iter()
-                .map(|p| (p.start_time.timestamp(), yocto_to_f64(&p.initial_value)))
-                .collect();
-            data.sort_by_key(|(ts, _)| *ts);
+    let values: Vec<f64> = data.iter().map(|(_, v)| *v).collect();
+    let (y_min, y_max) = calc_y_range(&values);
 
-            let values: Vec<f64> = data.iter().map(|(_, v)| *v).collect();
-            let timestamps: Vec<i64> = data.iter().map(|(ts, _)| *ts).collect();
+    let t_min = data.first().unwrap().0;
+    let t_max = data.last().unwrap().0;
+    let x_min = if t_min == t_max { t_min - 86400 } else { t_min };
+    let x_max = if t_min == t_max { t_max + 86400 } else { t_max };
 
-            let min_val = values.iter().cloned().fold(f64::INFINITY, f64::min);
-            let max_val = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-            let margin = (max_val - min_val).abs() * 0.1;
-            let y_min = if (max_val - min_val).abs() < f64::EPSILON {
-                min_val - 1.0
-            } else {
-                (min_val - margin).min(0.0)
-            };
-            let y_max = if (max_val - min_val).abs() < f64::EPSILON {
-                max_val + 1.0
-            } else {
-                max_val + margin
-            };
+    let body_width = 80_u32.saturating_mul(data.len() as u32).max(300);
 
-            let t_min = *timestamps.first().unwrap();
-            let t_max = *timestamps.last().unwrap();
-            let x_min = if t_min == t_max { t_min - 86400 } else { t_min };
-            let x_max = if t_min == t_max { t_max + 86400 } else { t_max };
+    // --- Y 軸ストリップ ---
+    let y_axis = {
+        let mut buf = SharedPixelBuffer::new(Y_AXIS_WIDTH, height);
+        {
+            let backend = BitMapBackend::with_buffer(buf.make_mut_bytes(), (Y_AXIS_WIDTH, height));
+            let root = backend.into_drawing_area();
+            root.fill(&WHITE).unwrap();
 
             let mut chart = ChartBuilder::on(&root)
-                .caption("Initial Value (NEAR)", ("sans-serif", 14))
-                .margin(10)
-                .x_label_area_size(30)
-                .y_label_area_size(70)
+                .margin_top(CHART_MARGIN_TOP)
+                .margin_bottom(0)
+                .margin_left(5)
+                .margin_right(0)
+                .y_label_area_size(CHART_Y_LABEL_SIZE)
+                .x_label_area_size(CHART_X_LABEL_SIZE)
+                .build_cartesian_2d(0f64..1f64, y_min..y_max)
+                .unwrap();
+
+            chart
+                .configure_mesh()
+                .disable_x_mesh()
+                .disable_y_mesh()
+                .x_labels(0)
+                .y_labels(5)
+                .y_label_formatter(&|v| format_compact(*v))
+                .draw()
+                .unwrap();
+
+            root.present().unwrap();
+        }
+        Image::from_rgb8(buf)
+    };
+
+    // --- チャート本体 ---
+    let body = {
+        let mut buf = SharedPixelBuffer::new(body_width, height);
+        {
+            let backend = BitMapBackend::with_buffer(buf.make_mut_bytes(), (body_width, height));
+            let root = backend.into_drawing_area();
+            root.fill(&WHITE).unwrap();
+
+            let mut chart = ChartBuilder::on(&root)
+                .margin_top(CHART_MARGIN_TOP)
+                .margin_bottom(0)
+                .margin_left(0)
+                .margin_right(10)
+                .y_label_area_size(0)
+                .x_label_area_size(CHART_X_LABEL_SIZE)
                 .build_cartesian_2d(x_min..x_max, y_min..y_max)
                 .unwrap();
 
@@ -91,14 +152,13 @@ pub fn render_eval_periods_chart(
                 .configure_mesh()
                 .disable_x_mesh()
                 .disable_y_mesh()
-                .x_labels(4)
+                .x_labels(data.len().min(10))
                 .x_label_formatter(&|ts| {
                     chrono::DateTime::from_timestamp(*ts, 0)
                         .map(|dt| dt.format("%m/%d").to_string())
                         .unwrap_or_default()
                 })
-                .y_labels(5)
-                .y_label_formatter(&|v| format_compact(*v))
+                .y_labels(0)
                 .draw()
                 .unwrap();
 
@@ -115,12 +175,17 @@ pub fn render_eval_periods_chart(
                         .map(|&(ts, v)| Circle::new((ts, v), 4, BLUE.filled())),
                 )
                 .unwrap();
+
+            root.present().unwrap();
         }
+        Image::from_rgb8(buf)
+    };
 
-        root.present().unwrap();
+    EvalPeriodsChart {
+        y_axis,
+        body,
+        body_width,
     }
-
-    Image::from_rgb8(pixel_buffer)
 }
 
 /// total_value_wnear の時系列推移を折れ線グラフでレンダリングする。

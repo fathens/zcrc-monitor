@@ -17,7 +17,9 @@ export component PortfolioTab inherits VerticalLayout {
     in property <string> eval-period-holdings-error: "";
     in property <bool> eval-period-holdings-loaded: false;
 
-    in property <image> eval-periods-chart-image;
+    in property <image> eval-periods-y-axis-image;
+    in property <image> eval-periods-chart-body-image;
+    in property <int> eval-periods-chart-width: 0;
     in property <image> line-chart-image;
     in property <image> bar-chart-image;
     in-out property <int> chart-mode: 0; // 0=全体推移, 1=トークン別
@@ -27,32 +29,22 @@ export component PortfolioTab inherits VerticalLayout {
     callback eval-periods-next-page();
     callback eval-periods-prev-page();
 
-    Text {
-        text: "評価期間";
-        font-size: 16px;
-        font-weight: 700;
-    }
-
+    // === 評価期間チャート（横スクロール、Y軸固定） ===
     HorizontalLayout {
-        spacing: 8px;
+        spacing: 4px;
         alignment: start;
+
+        Text {
+            text: "評価期間";
+            font-size: 16px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
 
         Button {
             text: "更新";
             clicked => { root.eval-periods-refresh(); }
         }
-
-        if root.eval-periods-loaded : Text {
-            text: "全 " + root.eval-periods-total-count + " 件";
-            vertical-alignment: center;
-            color: #888888;
-        }
-    }
-
-    if root.eval-periods-chart-image.width > 0 : Image {
-        source: root.eval-periods-chart-image;
-        height: 150px;
-        image-fit: contain;
     }
 
     if root.eval-periods-error != "" : Text {
@@ -60,80 +52,33 @@ export component PortfolioTab inherits VerticalLayout {
         color: #f44336;
     }
 
-    if root.eval-periods-loaded && root.eval-periods.length == 0 : Text {
-        text: "評価期間がありません";
-        color: #9e9e9e;
-        horizontal-alignment: center;
-    }
+    if root.eval-periods-chart-width > 0 : HorizontalLayout {
+        spacing: 0px;
+        height: 150px;
 
-    if root.eval-periods.length > 0 : ListView {
-        vertical-stretch: 1;
+        Image {
+            source: root.eval-periods-y-axis-image;
+            width: 70px;
+            height: 150px;
+            image-fit: fill;
+        }
 
-        for ep[index] in root.eval-periods : Rectangle {
-            background: root.eval-period-selected-index == index ? #e8f0fe
-                : ep-touch.has-hover ? #e3f2fd
-                : Math.mod(index, 2) == 0 ? #f8f8f8
-                : transparent;
+        Flickable {
+            horizontal-stretch: 1;
+            height: 150px;
+            viewport-width: root.eval-periods-chart-width * 1px;
+            viewport-height: 150px;
 
-            ep-touch := TouchArea {
-                clicked => {
-                    root.eval-period-select(index);
-                }
-            }
-
-            VerticalLayout {
-                padding-top: 6px;
-                padding-bottom: 6px;
-                padding-left: 8px;
-                padding-right: 8px;
-                spacing: 2px;
-
-                HorizontalLayout {
-                    spacing: 8px;
-
-                    Text {
-                        text: ep.start-time;
-                        font-weight: 500;
-                        font-size: 13px;
-                        vertical-alignment: center;
-                    }
-
-                    Text {
-                        text: ep.initial-value;
-                        color: #1976d2;
-                        font-size: 13px;
-                        vertical-alignment: center;
-                    }
-                }
-
+            Image {
+                source: root.eval-periods-chart-body-image;
+                width: root.eval-periods-chart-width * 1px;
+                height: 150px;
+                image-fit: fill;
             }
         }
     }
 
-    // Pagination controls
-    if root.eval-periods-loaded : HorizontalLayout {
-        spacing: 8px;
-        alignment: center;
-
-        Button {
-            text: "前へ";
-            enabled: root.eval-periods-page > 0;
-            clicked => { root.eval-periods-prev-page(); }
-        }
-
-        Text {
-            text: "ページ " + (root.eval-periods-page + 1);
-            vertical-alignment: center;
-        }
-
-        Button {
-            text: "次へ";
-            enabled: (root.eval-periods-page + 1) * root.eval-periods-page-size < root.eval-periods-total-count;
-            clicked => { root.eval-periods-next-page(); }
-        }
-    }
-
-    // === Charts ===
+    // === Holdings Charts ===
     if root.line-chart-image.width > 0 || root.bar-chart-image.width > 0 : Rectangle {
         height: 1px;
         background: #cccccc;
