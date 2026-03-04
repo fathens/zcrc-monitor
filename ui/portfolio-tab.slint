@@ -17,6 +17,7 @@ export component PortfolioTab inherits VerticalLayout {
     in property <string> eval-period-holdings-error: "";
     in property <bool> eval-period-holdings-loaded: false;
 
+    in property <image> eval-periods-chart-image;
     in property <image> line-chart-image;
     in property <image> bar-chart-image;
     in-out property <int> chart-mode: 0; // 0=全体推移, 1=トークン別
@@ -46,6 +47,12 @@ export component PortfolioTab inherits VerticalLayout {
             vertical-alignment: center;
             color: #888888;
         }
+    }
+
+    if root.eval-periods-chart-image.width > 0 : Image {
+        source: root.eval-periods-chart-image;
+        height: 150px;
+        image-fit: contain;
     }
 
     if root.eval-periods-error != "" : Text {

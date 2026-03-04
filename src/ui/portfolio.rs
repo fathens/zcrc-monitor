@@ -100,12 +100,14 @@ fn refresh_eval_periods(weak: Weak<AppWindow>, client: GrpcClient, page: i32, pa
         };
         match result {
             Ok((items, total_count)) => {
+                let periods_chart = chart::render_eval_periods_chart(&items, 400, 150);
                 let slint_items: Vec<SlintEvaluationPeriod> =
                     items.into_iter().map(to_slint_eval_period).collect();
                 app.set_eval_periods(ModelRc::new(VecModel::from(slint_items)));
                 app.set_eval_periods_total_count(total_count as i32);
                 app.set_eval_periods_loaded(true);
                 app.set_eval_periods_error("".into());
+                app.set_eval_periods_chart_image(periods_chart);
                 tracing::debug!("Evaluation periods loaded: page={page}, total={total_count}");
             }
             Err(e) => {

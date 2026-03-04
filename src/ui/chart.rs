@@ -1,7 +1,7 @@
 use num_traits::ToPrimitive;
 use common::types::YoctoValue;
 
-use crate::grpc::portfolio::PortfolioHoldingItem;
+use crate::grpc::portfolio::{EvaluationPeriodItem, PortfolioHoldingItem};
 use plotters::prelude::*;
 use slint::{Image, SharedPixelBuffer};
 
@@ -33,6 +33,94 @@ pub fn format_compact(value: f64) -> String {
     } else {
         format!("{scaled:.2}{suffix}")
     }
+}
+
+/// 評価期間の initial_value を時系列折れ線グラフでレンダリングする。
+pub fn render_eval_periods_chart(
+    periods: &[EvaluationPeriodItem],
+    width: u32,
+    height: u32,
+) -> Image {
+    let mut pixel_buffer = SharedPixelBuffer::new(width, height);
+    let size = (width, height);
+
+    {
+        let backend = BitMapBackend::with_buffer(pixel_buffer.make_mut_bytes(), size);
+        let root = backend.into_drawing_area();
+        root.fill(&WHITE).unwrap();
+
+        if !periods.is_empty() {
+            // 時間順にソート済みの値を収集（古い→新しい）
+            let mut data: Vec<(i64, f64)> = periods
+                .iter()
+                .map(|p| (p.start_time.timestamp(), yocto_to_f64(&p.initial_value)))
+                .collect();
+            data.sort_by_key(|(ts, _)| *ts);
+
+            let values: Vec<f64> = data.iter().map(|(_, v)| *v).collect();
+            let timestamps: Vec<i64> = data.iter().map(|(ts, _)| *ts).collect();
+
+            let min_val = values.iter().cloned().fold(f64::INFINITY, f64::min);
+            let max_val = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let margin = (max_val - min_val).abs() * 0.1;
+            let y_min = if (max_val - min_val).abs() < f64::EPSILON {
+                min_val - 1.0
+            } else {
+                (min_val - margin).min(0.0)
+            };
+            let y_max = if (max_val - min_val).abs() < f64::EPSILON {
+                max_val + 1.0
+            } else {
+                max_val + margin
+            };
+
+            let t_min = *timestamps.first().unwrap();
+            let t_max = *timestamps.last().unwrap();
+            let x_min = if t_min == t_max { t_min - 86400 } else { t_min };
+            let x_max = if t_min == t_max { t_max + 86400 } else { t_max };
+
+            let mut chart = ChartBuilder::on(&root)
+                .caption("Initial Value (NEAR)", ("sans-serif", 14))
+                .margin(10)
+                .x_label_area_size(30)
+                .y_label_area_size(70)
+                .build_cartesian_2d(x_min..x_max, y_min..y_max)
+                .unwrap();
+
+            chart
+                .configure_mesh()
+                .disable_x_mesh()
+                .disable_y_mesh()
+                .x_labels(4)
+                .x_label_formatter(&|ts| {
+                    chrono::DateTime::from_timestamp(*ts, 0)
+                        .map(|dt| dt.format("%m/%d").to_string())
+                        .unwrap_or_default()
+                })
+                .y_labels(5)
+                .y_label_formatter(&|v| format_compact(*v))
+                .draw()
+                .unwrap();
+
+            chart
+                .draw_series(LineSeries::new(
+                    data.iter().map(|&(ts, v)| (ts, v)),
+                    BLUE.stroke_width(2),
+                ))
+                .unwrap();
+
+            chart
+                .draw_series(
+                    data.iter()
+                        .map(|&(ts, v)| Circle::new((ts, v), 4, BLUE.filled())),
+                )
+                .unwrap();
+        }
+
+        root.present().unwrap();
+    }
+
+    Image::from_rgb8(pixel_buffer)
 }
 
 /// total_value_wnear の時系列推移を折れ線グラフでレンダリングする。
