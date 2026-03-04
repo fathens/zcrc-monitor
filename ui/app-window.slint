@@ -21,6 +21,18 @@ export struct SlintEvaluationPeriod {
     selected-tokens: string,
 }
 
+export struct SlintTokenHolding {
+    token: string,
+    balance: string,
+    value-wnear: string,
+}
+
+export struct SlintPortfolioHolding {
+    timestamp: string,
+    token-holdings: [SlintTokenHolding],
+    total-value-wnear: string,
+}
+
 export component AppWindow inherits Window {
     title: "zcrc-monitor";
     preferred-width: 800px;
@@ -52,6 +64,10 @@ export component AppWindow inherits Window {
     in-out property <int> eval-periods-page: 0;
     in property <int> eval-periods-total-count: 0;
     in-out property <int> eval-periods-page-size: 20;
+
+    in property <[SlintPortfolioHolding]> eval-period-holdings: [];
+    in property <string> eval-period-holdings-error: "";
+    in property <bool> eval-period-holdings-loaded: false;
 
     callback config-refresh();
     callback config-select-entry(/* index */ int);
@@ -474,6 +490,94 @@ export component AppWindow inherits Window {
                         text: "トークン: " + ep.selected-tokens;
                         color: #666666;
                         font-size: 11px;
+                    }
+
+                    if root.eval-period-selected-index == index && root.eval-period-holdings-error != "" : Text {
+                        text: root.eval-period-holdings-error;
+                        color: #f44336;
+                        font-size: 11px;
+                    }
+
+                    if root.eval-period-selected-index == index && root.eval-period-holdings-loaded && root.eval-period-holdings.length == 0 : Text {
+                        text: "ホールディングデータなし";
+                        color: #9e9e9e;
+                        font-size: 11px;
+                    }
+
+                    if root.eval-period-selected-index == index && root.eval-period-holdings.length > 0 : VerticalLayout {
+                        padding-top: 4px;
+                        spacing: 4px;
+
+                        for holding in root.eval-period-holdings : VerticalLayout {
+                            spacing: 2px;
+
+                            Rectangle {
+                                height: 1px;
+                                background: #e0e0e0;
+                            }
+
+                            Text {
+                                text: holding.timestamp;
+                                font-size: 11px;
+                                font-weight: 500;
+                                color: #333333;
+                            }
+
+                            for th in holding.token-holdings : HorizontalLayout {
+                                padding-left: 16px;
+                                spacing: 12px;
+
+                                Text {
+                                    text: th.token;
+                                    font-size: 11px;
+                                    color: #555555;
+                                    horizontal-stretch: 2;
+                                    overflow: elide;
+                                }
+
+                                Text {
+                                    text: th.balance;
+                                    font-size: 11px;
+                                    color: #666666;
+                                    horizontal-stretch: 1;
+                                    horizontal-alignment: right;
+                                }
+
+                                Text {
+                                    text: th.value-wnear;
+                                    font-size: 11px;
+                                    color: #1976d2;
+                                    horizontal-stretch: 1;
+                                    horizontal-alignment: right;
+                                }
+                            }
+
+                            HorizontalLayout {
+                                padding-left: 16px;
+                                spacing: 12px;
+
+                                Text {
+                                    text: "合計";
+                                    font-size: 11px;
+                                    font-weight: 500;
+                                    color: #333333;
+                                    horizontal-stretch: 2;
+                                }
+
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                }
+
+                                Text {
+                                    text: holding.total-value-wnear;
+                                    font-size: 11px;
+                                    font-weight: 500;
+                                    color: #1976d2;
+                                    horizontal-stretch: 1;
+                                    horizontal-alignment: right;
+                                }
+                            }
+                        }
                     }
                 }
             }
