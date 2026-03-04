@@ -1,0 +1,32 @@
+export struct SlintConfigEntry {
+    key: string,
+    value: string,
+    instance-id: string,
+}
+
+export struct SlintKeyDefinition {
+    key: string,
+    description: string,
+    type-name: string,
+    resolved-value: string,
+}
+
+export struct SlintEvaluationPeriod {
+    id: int,
+    period-id: string,
+    start-time: string,
+    initial-value: string,
+    selected-tokens: string,
+}
+
+export struct SlintTokenHolding {
+    token: string,
+    balance: string,
+    value-wnear: string,
+}
+
+export struct SlintPortfolioHolding {
+    timestamp: string,
+    token-holdings: [SlintTokenHolding],
+    total-value-wnear: string,
+}
