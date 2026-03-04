@@ -1,7 +1,8 @@
 use crate::grpc::GrpcClient;
 use crate::grpc::portfolio::{EvaluationPeriodItem, PortfolioHoldingItem, TokenHoldingItem};
+use crate::ui::chart;
 use crate::{AppWindow, SlintEvaluationPeriod, SlintPortfolioHolding, SlintTokenHolding};
-use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel, Weak};
+use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel, Weak};
 
 pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     // 初回ロード
@@ -74,6 +75,8 @@ fn clear_holdings(app: &AppWindow) {
     app.set_eval_period_holdings(ModelRc::new(VecModel::<SlintPortfolioHolding>::default()));
     app.set_eval_period_holdings_error("".into());
     app.set_eval_period_holdings_loaded(false);
+    app.set_line_chart_image(Image::default());
+    app.set_bar_chart_image(Image::default());
 }
 
 fn get_page_info(weak: &Weak<AppWindow>) -> (i32, i32) {
@@ -120,11 +123,15 @@ fn fetch_holdings(weak: Weak<AppWindow>, client: GrpcClient, period_id: String) 
         };
         match result {
             Ok(items) => {
+                let line_chart = chart::render_line_chart(&items, 400, 250);
+                let bar_chart = chart::render_bar_chart(&items, 400, 250);
                 let slint_items: Vec<SlintPortfolioHolding> =
                     items.into_iter().map(to_slint_portfolio_holding).collect();
                 app.set_eval_period_holdings(ModelRc::new(VecModel::from(slint_items)));
                 app.set_eval_period_holdings_loaded(true);
                 app.set_eval_period_holdings_error("".into());
+                app.set_line_chart_image(line_chart);
+                app.set_bar_chart_image(bar_chart);
                 tracing::debug!("Portfolio holdings loaded for {period_id}");
             }
             Err(e) => {
