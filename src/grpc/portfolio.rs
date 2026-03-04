@@ -1,6 +1,6 @@
 use super::GrpcClient;
 use super::proto::portfolio_service_client::PortfolioServiceClient;
-use super::proto::GetEvaluationPeriodsRequest;
+use super::proto::{GetEvaluationPeriodsRequest, GetPortfolioHoldingsRequest};
 use chrono::{DateTime, Utc};
 
 pub struct EvaluationPeriodItem {
@@ -9,6 +9,19 @@ pub struct EvaluationPeriodItem {
     pub start_time: DateTime<Utc>,
     pub initial_value: String,
     pub selected_tokens: Vec<String>,
+}
+
+pub struct TokenHoldingItem {
+    pub token: String,
+    pub balance: String,
+    pub decimals: u32,
+    pub value_wnear: String,
+}
+
+pub struct PortfolioHoldingItem {
+    pub timestamp: DateTime<Utc>,
+    pub token_holdings: Vec<TokenHoldingItem>,
+    pub total_value_wnear: String,
 }
 
 fn timestamp_to_datetime(ts: prost_types::Timestamp) -> DateTime<Utc> {
@@ -22,6 +35,27 @@ fn proto_to_item(ep: super::proto::EvaluationPeriod) -> EvaluationPeriodItem {
         start_time: ep.start_time.map(timestamp_to_datetime).unwrap_or_default(),
         initial_value: ep.initial_value,
         selected_tokens: ep.selected_tokens,
+    }
+}
+
+fn proto_to_token_holding(th: super::proto::TokenHolding) -> TokenHoldingItem {
+    TokenHoldingItem {
+        token: th.token,
+        balance: th.balance,
+        decimals: th.decimals,
+        value_wnear: th.value_wnear,
+    }
+}
+
+fn proto_to_portfolio_holding(h: super::proto::PortfolioHolding) -> PortfolioHoldingItem {
+    PortfolioHoldingItem {
+        timestamp: h.timestamp.map(timestamp_to_datetime).unwrap_or_default(),
+        token_holdings: h
+            .token_holdings
+            .into_iter()
+            .map(proto_to_token_holding)
+            .collect(),
+        total_value_wnear: h.total_value_wnear,
     }
 }
 
@@ -39,6 +73,27 @@ pub async fn get_evaluation_periods(
     let inner = response.into_inner();
     let items = inner.periods.into_iter().map(proto_to_item).collect();
     Ok((items, inner.total_count))
+}
+
+pub async fn get_portfolio_holdings(
+    client: &GrpcClient,
+    period_id: &str,
+) -> Result<Vec<PortfolioHoldingItem>, String> {
+    let channel = client.channel().await.map_err(|e| format!("{e:?}"))?;
+    let mut svc = PortfolioServiceClient::new(channel);
+    let response = svc
+        .get_portfolio_holdings(GetPortfolioHoldingsRequest {
+            period_id: period_id.to_string(),
+        })
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let inner = response.into_inner();
+    let items = inner
+        .holdings
+        .into_iter()
+        .map(proto_to_portfolio_holding)
+        .collect();
+    Ok(items)
 }
 
 #[cfg(test)]
@@ -107,5 +162,63 @@ mod tests {
         };
         let item = proto_to_item(proto);
         assert_eq!(item.start_time, DateTime::<Utc>::default());
+    }
+
+    #[test]
+    fn test_proto_to_token_holding() {
+        let proto = super::super::proto::TokenHolding {
+            token: "wrap.near".to_string(),
+            balance: "1000000000000000000000000".to_string(),
+            decimals: 24,
+            value_wnear: "1000000000000000000000000".to_string(),
+        };
+        let item = proto_to_token_holding(proto);
+        assert_eq!(item.token, "wrap.near");
+        assert_eq!(item.balance, "1000000000000000000000000");
+        assert_eq!(item.decimals, 24);
+        assert_eq!(item.value_wnear, "1000000000000000000000000");
+    }
+
+    #[test]
+    fn test_proto_to_portfolio_holding() {
+        let proto = super::super::proto::PortfolioHolding {
+            timestamp: Some(prost_types::Timestamp {
+                seconds: 1700000000,
+                nanos: 0,
+            }),
+            token_holdings: vec![
+                super::super::proto::TokenHolding {
+                    token: "wrap.near".to_string(),
+                    balance: "100".to_string(),
+                    decimals: 24,
+                    value_wnear: "100".to_string(),
+                },
+                super::super::proto::TokenHolding {
+                    token: "usdt.tether-token.near".to_string(),
+                    balance: "5000000".to_string(),
+                    decimals: 6,
+                    value_wnear: "200".to_string(),
+                },
+            ],
+            total_value_wnear: "300".to_string(),
+        };
+        let item = proto_to_portfolio_holding(proto);
+        assert_eq!(item.timestamp.timestamp(), 1700000000);
+        assert_eq!(item.token_holdings.len(), 2);
+        assert_eq!(item.token_holdings[0].token, "wrap.near");
+        assert_eq!(item.token_holdings[1].token, "usdt.tether-token.near");
+        assert_eq!(item.total_value_wnear, "300");
+    }
+
+    #[test]
+    fn test_proto_to_portfolio_holding_no_timestamp() {
+        let proto = super::super::proto::PortfolioHolding {
+            timestamp: None,
+            token_holdings: vec![],
+            total_value_wnear: "0".to_string(),
+        };
+        let item = proto_to_portfolio_holding(proto);
+        assert_eq!(item.timestamp, DateTime::<Utc>::default());
+        assert!(item.token_holdings.is_empty());
     }
 }
