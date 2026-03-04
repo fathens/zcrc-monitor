@@ -11,7 +11,8 @@ fn main() -> Result<(), slint::PlatformError> {
     let client = grpc::GrpcClient::new();
 
     let _health_timer = ui::health::start_health_polling(&app, client.clone());
-    ui::config::setup_config_callbacks(&app, client);
+    ui::config::setup_config_callbacks(&app, client.clone());
+    ui::portfolio::setup_portfolio_callbacks(&app, client);
 
     app.run()
 }

@@ -1,5 +1,6 @@
 pub mod config;
 pub mod health;
+pub mod portfolio;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
