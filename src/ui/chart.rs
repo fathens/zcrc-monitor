@@ -227,6 +227,7 @@ pub fn render_line_chart(holdings: &[PortfolioHoldingItem], width: u32, height: 
         if !holdings.is_empty() {
             let values: Vec<f64> = holdings
                 .iter()
+                .rev()
                 .map(|h| yocto_to_f64(&h.total_value_wnear))
                 .collect();
 
@@ -307,7 +308,7 @@ pub fn render_token_lines_chart(
         if !holdings.is_empty() {
             // トークン名 → 時系列値を収集
             let mut token_series: BTreeMap<String, Vec<(usize, f64)>> = BTreeMap::new();
-            for (i, h) in holdings.iter().enumerate() {
+            for (i, h) in holdings.iter().rev().enumerate() {
                 for th in &h.token_holdings {
                     let name = shorten_token(&th.token);
                     let value = yocto_to_f64(&th.value_wnear);
