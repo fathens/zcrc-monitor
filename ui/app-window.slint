@@ -1,4 +1,4 @@
-import { TabWidget } from "std-widgets.slint";
+import { Button } from "std-widgets.slint";
 import { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding, SlintChartZone } from "types.slint";
 import { SettingsTab } from "settings-tab.slint";
 import { PortfolioTab } from "portfolio-tab.slint";
@@ -15,7 +15,7 @@ export component AppWindow inherits Window {
     in property <string> health-db-status: "";
     in property <string> health-error-message: "";
 
-    // Settings tab properties
+    // Settings properties
     in-out property <string> config-instance-id <=> settings.config-instance-id;
     in property <[SlintConfigEntry]> config-entries <=> settings.config-entries;
     in property <string> config-error-message <=> settings.config-error-message;
@@ -30,7 +30,7 @@ export component AppWindow inherits Window {
     in property <string> key-definitions-error <=> settings.key-definitions-error;
     in-out property <bool> key-definitions-expanded <=> settings.key-definitions-expanded;
 
-    // Portfolio tab properties
+    // Portfolio properties
     in property <[SlintEvaluationPeriod]> eval-periods <=> portfolio.eval-periods;
     in property <string> eval-periods-error <=> portfolio.eval-periods-error;
     in property <bool> eval-periods-loaded <=> portfolio.eval-periods-loaded;
@@ -51,7 +51,9 @@ export component AppWindow inherits Window {
     in-out property <int> chart-mode <=> portfolio.chart-mode;
     in property <[SlintChartZone]> chart-zones <=> portfolio.chart-zones;
 
-    // Callbacks forwarded to sub-components
+    in-out property <bool> settings-visible: false;
+
+    // Callbacks
     callback config-refresh <=> settings.config-refresh;
     callback config-select-entry <=> settings.config-select-entry;
     callback config-upsert <=> settings.config-upsert;
@@ -68,23 +70,35 @@ export component AppWindow inherits Window {
         padding: 16px;
         spacing: 8px;
 
-        // === Health Status (global, above tabs) ===
+        // === Header ===
         HorizontalLayout {
             spacing: 8px;
-            alignment: start;
 
-            Rectangle {
-                width: 12px;
-                height: 12px;
-                border-radius: 6px;
-                background: root.health-status == "healthy" ? #4caf50
-                    : root.health-status == "unhealthy" ? #f44336
-                    : #9e9e9e;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                horizontal-stretch: 1;
+
+                Rectangle {
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 6px;
+                    background: root.health-status == "healthy" ? #4caf50
+                        : root.health-status == "unhealthy" ? #f44336
+                        : #9e9e9e;
+                }
+
+                Text {
+                    text: root.health-status-text;
+                    vertical-alignment: center;
+                }
             }
 
-            Text {
-                text: root.health-status-text;
-                vertical-alignment: center;
+            Button {
+                text: root.settings-visible ? "x 閉じる" : "設定";
+                clicked => {
+                    root.settings-visible = !root.settings-visible;
+                }
             }
         }
 
@@ -97,18 +111,20 @@ export component AppWindow inherits Window {
             color: #f44336;
         }
 
-        // === Tab Widget ===
-        TabWidget {
+        // === Settings panel / Portfolio (切り替え) ===
+        Rectangle {
             vertical-stretch: 1;
 
-            Tab {
-                title: "設定";
-                settings := SettingsTab {}
+            settings := SettingsTab {
+                visible: root.settings-visible;
+                width: parent.width;
+                height: parent.height;
             }
 
-            Tab {
-                title: "ポートフォリオ";
-                portfolio := PortfolioTab {}
+            portfolio := PortfolioTab {
+                visible: !root.settings-visible;
+                width: parent.width;
+                height: parent.height;
             }
         }
     }
