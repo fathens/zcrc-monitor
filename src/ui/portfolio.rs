@@ -257,15 +257,27 @@ fn fetch_holdings(weak: Weak<AppWindow>, client: GrpcClient, period_id: String) 
         };
         match result {
             Ok(items) => {
-                let line_chart = chart::render_line_chart(&items, 400, 250);
-                let bar_chart = chart::render_token_lines_chart(&items, 400, 250);
+                // リストを先に表示
                 let slint_items: Vec<SlintPortfolioHolding> =
-                    items.into_iter().map(to_slint_portfolio_holding).collect();
+                    items.iter().map(to_slint_portfolio_holding_ref).collect();
                 app.set_eval_period_holdings(ModelRc::new(VecModel::from(slint_items)));
                 app.set_eval_period_holdings_loaded(true);
                 app.set_eval_period_holdings_error("".into());
-                app.set_line_chart_image(line_chart);
-                app.set_bar_chart_image(bar_chart);
+
+                // チャートをバックグラウンドスレッドで描画（Vec<u8> は Send）
+                let charts = tokio::task::spawn_blocking(move || {
+                    let line = chart::render_line_chart_raw(&items, 400, 250);
+                    let bar = chart::render_token_lines_chart_raw(&items, 400, 250);
+                    (line, bar)
+                })
+                .await;
+
+                if let Ok((line_raw, bar_raw)) = charts
+                    && let Some(app) = weak.upgrade()
+                {
+                    app.set_line_chart_image(chart::image_from_raw_rgb8(&line_raw, 400, 250));
+                    app.set_bar_chart_image(chart::image_from_raw_rgb8(&bar_raw, 400, 250));
+                }
                 tracing::debug!("Portfolio holdings loaded for {period_id}");
             }
             Err(e) => {
@@ -290,24 +302,24 @@ fn to_slint_eval_period(item: EvaluationPeriodItem) -> SlintEvaluationPeriod {
     }
 }
 
-fn to_slint_token_holding(item: TokenHoldingItem) -> SlintTokenHolding {
+fn to_slint_token_holding_ref(item: &TokenHoldingItem) -> SlintTokenHolding {
     let balance_f64 = item.balance.to_whole().to_f64().unwrap_or(0.0);
     let balance_display = chart::format_compact(balance_f64);
     let near = item.value_wnear.to_near();
     let near_f64 = near.as_bigdecimal().to_f64().unwrap_or(0.0);
     let value_display = chart::format_compact(near_f64);
     SlintTokenHolding {
-        token: SharedString::from(item.token),
+        token: SharedString::from(&item.token),
         balance: SharedString::from(balance_display),
         value_wnear: SharedString::from(format!("{value_display} NEAR")),
     }
 }
 
-fn to_slint_portfolio_holding(item: PortfolioHoldingItem) -> SlintPortfolioHolding {
+fn to_slint_portfolio_holding_ref(item: &PortfolioHoldingItem) -> SlintPortfolioHolding {
     let token_holdings: Vec<SlintTokenHolding> = item
         .token_holdings
-        .into_iter()
-        .map(to_slint_token_holding)
+        .iter()
+        .map(to_slint_token_holding_ref)
         .collect();
     let near = item.total_value_wnear.to_near();
     let near_f64 = near.as_bigdecimal().to_f64().unwrap_or(0.0);
@@ -379,7 +391,7 @@ mod tests {
             balance: token_amount("1000000000000000000000000", 24),
             value_wnear: yocto("1000000000000000000000000"),
         };
-        let slint = to_slint_token_holding(item);
+        let slint = to_slint_token_holding_ref(&item);
         assert_eq!(slint.token, "wrap.near");
         assert_eq!(slint.balance, "1.00");
         assert_eq!(slint.value_wnear, "1.00 NEAR");
@@ -403,7 +415,7 @@ mod tests {
             ],
             total_value_wnear: yocto("3000000000000000000000000"),
         };
-        let slint = to_slint_portfolio_holding(item);
+        let slint = to_slint_portfolio_holding_ref(&item);
         assert_eq!(slint.timestamp, "2023-11-14 22:13:20");
         assert_eq!(slint.token_holdings.row_count(), 2);
         let th0 = slint.token_holdings.row_data(0).unwrap();
@@ -421,7 +433,7 @@ mod tests {
             token_holdings: vec![],
             total_value_wnear: YoctoValue::zero(),
         };
-        let slint = to_slint_portfolio_holding(item);
+        let slint = to_slint_portfolio_holding_ref(&item);
         assert_eq!(slint.token_holdings.row_count(), 0);
         assert_eq!(slint.total_value_wnear, "0.00 NEAR");
     }
