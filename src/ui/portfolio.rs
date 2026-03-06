@@ -302,12 +302,41 @@ fn to_slint_eval_period(item: EvaluationPeriodItem) -> SlintEvaluationPeriod {
     }
 }
 
+fn format_with_commas(value: f64, decimals: usize) -> String {
+    let formatted = format!("{:.prec$}", value, prec = decimals);
+    let (int_part, frac_part) = match formatted.split_once('.') {
+        Some((i, f)) => (i.to_string(), Some(f.to_string())),
+        None => (formatted, None),
+    };
+
+    let negative = int_part.starts_with('-');
+    let digits: &str = if negative { &int_part[1..] } else { &int_part };
+
+    let with_commas: String = digits
+        .as_bytes()
+        .rchunks(3)
+        .rev()
+        .map(|chunk| std::str::from_utf8(chunk).unwrap())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let result = match frac_part {
+        Some(f) => format!("{with_commas}.{f}"),
+        None => with_commas,
+    };
+    if negative {
+        format!("-{result}")
+    } else {
+        result
+    }
+}
+
 fn to_slint_token_holding_ref(item: &TokenHoldingItem) -> SlintTokenHolding {
     let balance_f64 = item.balance.to_whole().to_f64().unwrap_or(0.0);
-    let balance_display = chart::format_compact(balance_f64);
+    let balance_display = format_with_commas(balance_f64, 2);
     let near = item.value_wnear.to_near();
     let near_f64 = near.as_bigdecimal().to_f64().unwrap_or(0.0);
-    let value_display = chart::format_compact(near_f64);
+    let value_display = format_with_commas(near_f64, 2);
     SlintTokenHolding {
         token: SharedString::from(&item.token),
         balance: SharedString::from(balance_display),
@@ -323,7 +352,7 @@ fn to_slint_portfolio_holding_ref(item: &PortfolioHoldingItem) -> SlintPortfolio
         .collect();
     let near = item.total_value_wnear.to_near();
     let near_f64 = near.as_bigdecimal().to_f64().unwrap_or(0.0);
-    let total_display = chart::format_compact(near_f64);
+    let total_display = format_with_commas(near_f64, 2);
     SlintPortfolioHolding {
         timestamp: SharedString::from(item.timestamp.format("%Y-%m-%d %H:%M:%S").to_string()),
         token_holdings: ModelRc::new(VecModel::from(token_holdings)),
