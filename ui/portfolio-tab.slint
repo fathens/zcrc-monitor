@@ -1,5 +1,5 @@
 import { Button, ListView } from "std-widgets.slint";
-import { SlintEvaluationPeriod, SlintPortfolioHolding, SlintChartZone } from "types.slint";
+import { SlintEvaluationPeriod, SlintPortfolioHolding, SlintChartZone, SlintYLabel } from "types.slint";
 
 export component PortfolioTab inherits VerticalLayout {
     padding: 8px;
@@ -17,11 +17,13 @@ export component PortfolioTab inherits VerticalLayout {
     in property <string> eval-period-holdings-error: "";
     in property <bool> eval-period-holdings-loaded: false;
 
-    in property <image> eval-periods-y-axis-image;
+    in property <[SlintYLabel]> eval-periods-y-labels: [];
     in property <image> eval-periods-chart-body-image;
     in property <int> eval-periods-chart-width: 0;
     in property <image> line-chart-image;
     in property <image> bar-chart-image;
+    in property <[SlintYLabel]> line-chart-y-labels: [];
+    in property <[SlintYLabel]> bar-chart-y-labels: [];
     in-out property <int> chart-mode: 0; // 0=全体推移, 1=トークン別
     in property <[SlintChartZone]> chart-zones: [];
     in property <string> eval-period-selected-initial-value: "";
@@ -58,13 +60,20 @@ export component PortfolioTab inherits VerticalLayout {
     if root.eval-periods-chart-width > 0 : Rectangle {
         height: 150px;
 
-        Image {
-            source: root.eval-periods-y-axis-image;
+        Rectangle {
             x: 0;
             y: 0;
             width: 65px;
             height: 150px;
-            image-fit: fill;
+
+            for label in root.eval-periods-y-labels : Text {
+                text: label.text;
+                y: label.y-pos * 1px - 7px;
+                width: 60px;
+                horizontal-alignment: right;
+                font-size: 12px;
+                color: #333333;
+            }
         }
 
         Flickable {
@@ -143,16 +152,50 @@ export component PortfolioTab inherits VerticalLayout {
         }
     }
 
-    if root.chart-mode == 0 && root.eval-period-holdings-loaded && root.eval-period-holdings.length > 0 : Image {
-        source: root.line-chart-image;
+    if root.chart-mode == 0 && root.eval-period-holdings-loaded && root.eval-period-holdings.length > 0 : HorizontalLayout {
         height: 200px;
-        image-fit: contain;
+
+        Rectangle {
+            width: 70px;
+
+            for label in root.line-chart-y-labels : Text {
+                text: label.text;
+                y: label.y-pos * 1px - 7px;
+                width: 65px;
+                horizontal-alignment: right;
+                font-size: 12px;
+                color: #333333;
+            }
+        }
+
+        Image {
+            source: root.line-chart-image;
+            horizontal-stretch: 1;
+            image-fit: contain;
+        }
     }
 
-    if root.chart-mode == 1 && root.eval-period-holdings-loaded && root.eval-period-holdings.length > 0 : Image {
-        source: root.bar-chart-image;
+    if root.chart-mode == 1 && root.eval-period-holdings-loaded && root.eval-period-holdings.length > 0 : HorizontalLayout {
         height: 200px;
-        image-fit: contain;
+
+        Rectangle {
+            width: 70px;
+
+            for label in root.bar-chart-y-labels : Text {
+                text: label.text;
+                y: label.y-pos * 1px - 7px;
+                width: 65px;
+                horizontal-alignment: right;
+                font-size: 12px;
+                color: #333333;
+            }
+        }
+
+        Image {
+            source: root.bar-chart-image;
+            horizontal-stretch: 1;
+            image-fit: contain;
+        }
     }
 
     // === Holdings Table ===

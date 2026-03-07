@@ -7,6 +7,7 @@ use crate::grpc::portfolio::{EvaluationPeriodItem, PortfolioHoldingItem, TokenHo
 use crate::ui::chart;
 use crate::{
     AppWindow, SlintChartZone, SlintEvaluationPeriod, SlintPortfolioHolding, SlintTokenHolding,
+    SlintYLabel,
 };
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel, Weak};
 
@@ -202,7 +203,15 @@ fn refresh_eval_periods(
         match result {
             Ok((items, total_count)) => {
                 let periods_chart = chart::render_eval_periods_chart(&items, 150);
-                app.set_eval_periods_y_axis_image(periods_chart.y_axis);
+                let slint_y_labels: Vec<SlintYLabel> = periods_chart
+                    .y_labels
+                    .iter()
+                    .map(|(text, y_pos)| SlintYLabel {
+                        text: SharedString::from(text.as_str()),
+                        y_pos: *y_pos,
+                    })
+                    .collect();
+                app.set_eval_periods_y_labels(ModelRc::new(VecModel::from(slint_y_labels)));
                 app.set_eval_periods_chart_body_image(periods_chart.body);
                 app.set_eval_periods_chart_width(periods_chart.body_width as i32);
 
@@ -274,17 +283,31 @@ fn fetch_holdings(weak: Weak<AppWindow>, client: GrpcClient, period_id: String) 
 
                 // チャートをバックグラウンドスレッドで描画（Vec<u8> は Send）
                 let charts = tokio::task::spawn_blocking(move || {
-                    let line = chart::render_line_chart_raw(&items, 400, 250);
-                    let bar = chart::render_token_lines_chart_raw(&items, 400, 250);
-                    (line, bar)
+                    let (line, line_labels) = chart::render_line_chart_raw(&items, 400, 250);
+                    let (bar, bar_labels) = chart::render_token_lines_chart_raw(&items, 400, 250);
+                    (line, line_labels, bar, bar_labels)
                 })
                 .await;
 
-                if let Ok((line_raw, bar_raw)) = charts
+                if let Ok((line_raw, line_labels, bar_raw, bar_labels)) = charts
                     && let Some(app) = weak.upgrade()
                 {
                     app.set_line_chart_image(chart::image_from_raw_rgb8(&line_raw, 400, 250));
                     app.set_bar_chart_image(chart::image_from_raw_rgb8(&bar_raw, 400, 250));
+
+                    let to_slint_labels = |labels: Vec<(String, f32)>| -> ModelRc<SlintYLabel> {
+                        ModelRc::new(VecModel::from(
+                            labels
+                                .into_iter()
+                                .map(|(text, y_pos)| SlintYLabel {
+                                    text: SharedString::from(text),
+                                    y_pos,
+                                })
+                                .collect::<Vec<_>>(),
+                        ))
+                    };
+                    app.set_line_chart_y_labels(to_slint_labels(line_labels));
+                    app.set_bar_chart_y_labels(to_slint_labels(bar_labels));
                 }
                 tracing::debug!("Portfolio holdings loaded for {period_id}");
             }

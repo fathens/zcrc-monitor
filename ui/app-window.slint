@@ -1,9 +1,9 @@
 import { Button } from "std-widgets.slint";
-import { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding, SlintChartZone } from "types.slint";
+import { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding, SlintChartZone, SlintYLabel } from "types.slint";
 import { SettingsTab } from "settings-tab.slint";
 import { PortfolioTab } from "portfolio-tab.slint";
 
-export { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding, SlintChartZone }
+export { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding, SlintChartZone, SlintYLabel }
 
 export component AppWindow inherits Window {
     title: "zcrc-monitor";
@@ -43,11 +43,13 @@ export component AppWindow inherits Window {
     in property <string> eval-period-holdings-error <=> portfolio.eval-period-holdings-error;
     in property <bool> eval-period-holdings-loaded <=> portfolio.eval-period-holdings-loaded;
 
-    in property <image> eval-periods-y-axis-image <=> portfolio.eval-periods-y-axis-image;
+    in property <[SlintYLabel]> eval-periods-y-labels <=> portfolio.eval-periods-y-labels;
     in property <image> eval-periods-chart-body-image <=> portfolio.eval-periods-chart-body-image;
     in property <int> eval-periods-chart-width <=> portfolio.eval-periods-chart-width;
     in property <image> line-chart-image <=> portfolio.line-chart-image;
     in property <image> bar-chart-image <=> portfolio.bar-chart-image;
+    in property <[SlintYLabel]> line-chart-y-labels <=> portfolio.line-chart-y-labels;
+    in property <[SlintYLabel]> bar-chart-y-labels <=> portfolio.bar-chart-y-labels;
     in-out property <int> chart-mode <=> portfolio.chart-mode;
     in property <[SlintChartZone]> chart-zones <=> portfolio.chart-zones;
     in property <string> eval-period-selected-initial-value <=> portfolio.eval-period-selected-initial-value;

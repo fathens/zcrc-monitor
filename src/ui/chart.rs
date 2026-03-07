@@ -37,7 +37,7 @@ pub fn format_compact(value: f64) -> String {
 
 /// 評価期間チャートの描画結果
 pub struct EvalPeriodsChart {
-    pub y_axis: Image,
+    pub y_labels: Vec<(String, f32)>,
     pub body: Image,
     pub body_width: u32,
     /// プロットエリアの幅（マージン除く）
@@ -52,8 +52,28 @@ pub struct EvalPeriodsChart {
 // チャート共通の縦レイアウト定数
 const CHART_MARGIN_TOP: u32 = 5;
 const CHART_X_LABEL_SIZE: u32 = 30;
-const CHART_Y_LABEL_SIZE: u32 = 55;
-const Y_AXIS_WIDTH: u32 = 65;
+
+/// Y軸ラベルを等間隔で n 個生成し、各ラベルのテキストとピクセルY座標を返す。
+fn calc_y_labels(
+    y_min: f64,
+    y_max: f64,
+    n: usize,
+    plot_top: f32,
+    plot_bottom: f32,
+) -> Vec<(String, f32)> {
+    if n < 2 {
+        let y = (plot_top + plot_bottom) / 2.0;
+        return vec![(format_compact((y_min + y_max) / 2.0), y)];
+    }
+    (0..n)
+        .map(|i| {
+            let frac = i as f64 / (n - 1) as f64;
+            let value = y_max - frac * (y_max - y_min); // top=max, bottom=min
+            let y_px = plot_top + frac as f32 * (plot_bottom - plot_top);
+            (format_compact(value), y_px)
+        })
+        .collect()
+}
 
 /// Y 軸範囲を計算する。
 fn calc_y_range(values: &[f64]) -> (f64, f64) {
@@ -81,7 +101,7 @@ pub fn render_eval_periods_chart(
 ) -> EvalPeriodsChart {
     if periods.is_empty() {
         return EvalPeriodsChart {
-            y_axis: Image::default(),
+            y_labels: vec![],
             body: Image::default(),
             body_width: 0,
             plot_width: 0,
@@ -115,39 +135,10 @@ pub fn render_eval_periods_chart(
 
     let body_width = 80_u32.saturating_mul(data.len() as u32).max(300);
 
-    // --- Y 軸ストリップ ---
-    let y_axis = {
-        let mut buf = SharedPixelBuffer::new(Y_AXIS_WIDTH, height);
-        {
-            let backend = BitMapBackend::with_buffer(buf.make_mut_bytes(), (Y_AXIS_WIDTH, height));
-            let root = backend.into_drawing_area();
-            root.fill(&WHITE).unwrap();
-
-            let mut chart = ChartBuilder::on(&root)
-                .margin_top(CHART_MARGIN_TOP)
-                .margin_bottom(0)
-                .margin_left(0)
-                .margin_right(0)
-                .y_label_area_size(CHART_Y_LABEL_SIZE)
-                .x_label_area_size(CHART_X_LABEL_SIZE)
-                .build_cartesian_2d(0f64..1f64, y_min..y_max)
-                .unwrap();
-
-            chart
-                .configure_mesh()
-                .disable_x_mesh()
-                .disable_y_mesh()
-                .x_labels(0)
-                .y_labels(4)
-                .y_label_style(("sans-serif", 11))
-                .y_label_formatter(&|v| format_compact(*v))
-                .draw()
-                .unwrap();
-
-            root.present().unwrap();
-        }
-        Image::from_rgb8(buf)
-    };
+    // --- Y 軸ラベル ---
+    let plot_top = CHART_MARGIN_TOP as f32;
+    let plot_bottom = height as f32 - CHART_X_LABEL_SIZE as f32;
+    let y_labels = calc_y_labels(y_min, y_max, 4, plot_top, plot_bottom);
 
     // --- チャート本体 ---
     let body = {
@@ -204,7 +195,7 @@ pub fn render_eval_periods_chart(
     let sorted_points: Vec<(i64, usize)> = data.iter().map(|&(ts, _, idx)| (ts, idx)).collect();
 
     EvalPeriodsChart {
-        y_axis,
+        y_labels,
         body,
         body_width,
         plot_width,
@@ -227,10 +218,10 @@ pub fn render_line_chart_raw(
     holdings: &[PortfolioHoldingItem],
     width: u32,
     height: u32,
-) -> Vec<u8> {
+) -> (Vec<u8>, Vec<(String, f32)>) {
     let mut buf = vec![0u8; (width * height * 3) as usize];
-    render_line_chart_into(&mut buf, holdings, width, height);
-    buf
+    let labels = render_line_chart_into(&mut buf, holdings, width, height);
+    (buf, labels)
 }
 
 fn render_line_chart_into(
@@ -238,11 +229,13 @@ fn render_line_chart_into(
     holdings: &[PortfolioHoldingItem],
     width: u32,
     height: u32,
-) {
+) -> Vec<(String, f32)> {
     let size = (width, height);
     let backend = BitMapBackend::with_buffer(buf, size);
     let root = backend.into_drawing_area();
     root.fill(&WHITE).unwrap();
+
+    let mut labels = vec![];
 
     if !holdings.is_empty() {
         let values: Vec<f64> = holdings
@@ -271,7 +264,7 @@ fn render_line_chart_into(
             .caption("Portfolio (NEAR)", ("sans-serif", 14))
             .margin(10)
             .x_label_area_size(30)
-            .y_label_area_size(80)
+            .y_label_area_size(0)
             .build_cartesian_2d(0f64..x_max, y_min..y_max)
             .unwrap();
 
@@ -280,8 +273,7 @@ fn render_line_chart_into(
             .disable_x_mesh()
             .disable_y_mesh()
             .x_labels(6)
-            .y_labels(6)
-            .y_label_formatter(&|v| format_compact(*v))
+            .y_labels(0)
             .draw()
             .unwrap();
 
@@ -292,7 +284,6 @@ fn render_line_chart_into(
             ))
             .unwrap();
 
-        // データポイントにマーカーを描画
         chart
             .draw_series(
                 values
@@ -301,9 +292,15 @@ fn render_line_chart_into(
                     .map(|(i, &v)| Circle::new((i as f64, v), 4, BLUE.filled())),
             )
             .unwrap();
+
+        // caption(14) + margin(10) ≈ 24 top, x_label_area(30) + margin(10) = 40 bottom
+        let plot_top = 10.0 + 24.0;
+        let plot_bottom = height as f32 - 30.0 - 10.0;
+        labels = calc_y_labels(y_min, y_max, 6, plot_top, plot_bottom);
     }
 
     root.present().unwrap();
+    labels
 }
 
 /// ピクセルデータを Vec<u8> として返す（Send 可能）。
@@ -311,10 +308,10 @@ pub fn render_token_lines_chart_raw(
     holdings: &[PortfolioHoldingItem],
     width: u32,
     height: u32,
-) -> Vec<u8> {
+) -> (Vec<u8>, Vec<(String, f32)>) {
     let mut buf = vec![0u8; (width * height * 3) as usize];
-    render_token_lines_chart_into(&mut buf, holdings, width, height);
-    buf
+    let labels = render_token_lines_chart_into(&mut buf, holdings, width, height);
+    (buf, labels)
 }
 
 fn render_token_lines_chart_into(
@@ -322,13 +319,15 @@ fn render_token_lines_chart_into(
     holdings: &[PortfolioHoldingItem],
     width: u32,
     height: u32,
-) {
+) -> Vec<(String, f32)> {
     use std::collections::BTreeMap;
 
     let size = (width, height);
     let backend = BitMapBackend::with_buffer(buf, size);
     let root = backend.into_drawing_area();
     root.fill(&WHITE).unwrap();
+
+    let mut labels = vec![];
 
     if !holdings.is_empty() {
         // トークン名 → 時系列値を収集
@@ -366,7 +365,7 @@ fn render_token_lines_chart_into(
             .caption("Token Value (NEAR)", ("sans-serif", 14))
             .margin(10)
             .x_label_area_size(30)
-            .y_label_area_size(80)
+            .y_label_area_size(0)
             .build_cartesian_2d(0f64..x_max, y_min..y_max)
             .unwrap();
 
@@ -375,8 +374,7 @@ fn render_token_lines_chart_into(
             .disable_x_mesh()
             .disable_y_mesh()
             .x_labels(6)
-            .y_labels(6)
-            .y_label_formatter(&|v| format_compact(*v))
+            .y_labels(0)
             .draw()
             .unwrap();
 
@@ -413,9 +411,14 @@ fn render_token_lines_chart_into(
             .label_font(("sans-serif", 11))
             .draw()
             .unwrap();
+
+        let plot_top = 10.0 + 24.0;
+        let plot_bottom = height as f32 - 30.0 - 10.0;
+        labels = calc_y_labels(y_min, y_max, 6, plot_top, plot_bottom);
     }
 
     root.present().unwrap();
+    labels
 }
 
 /// トークン名を短縮する（例: "wrap.near" → "wrap"）
