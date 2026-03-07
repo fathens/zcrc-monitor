@@ -80,11 +80,15 @@ fn calc_y_range(values: &[f64]) -> (f64, f64) {
     let min_val = values.iter().cloned().fold(f64::INFINITY, f64::min);
     let max_val = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     let margin = (max_val - min_val).abs() * 0.1;
-    let y_min = if (max_val - min_val).abs() < f64::EPSILON {
+    let mut y_min = if (max_val - min_val).abs() < f64::EPSILON {
         min_val - 1.0
     } else {
         min_val - margin
     };
+    // 全値が非負ならY軸下限を0以上に保つ
+    if min_val >= 0.0 && y_min < 0.0 {
+        y_min = 0.0;
+    }
     let y_max = if (max_val - min_val).abs() < f64::EPSILON {
         max_val + 1.0
     } else {
@@ -247,11 +251,14 @@ fn render_line_chart_into(
         let min_val = values.iter().cloned().fold(f64::INFINITY, f64::min);
         let max_val = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let margin = (max_val - min_val).abs() * 0.1;
-        let y_min = if (max_val - min_val).abs() < f64::EPSILON {
+        let mut y_min = if (max_val - min_val).abs() < f64::EPSILON {
             min_val - 1.0
         } else {
             min_val - margin
         };
+        if min_val >= 0.0 && y_min < 0.0 {
+            y_min = 0.0;
+        }
         let y_max = if (max_val - min_val).abs() < f64::EPSILON {
             max_val + 1.0
         } else {
@@ -348,11 +355,14 @@ fn render_token_lines_chart_into(
         let min_val = all_values.iter().cloned().fold(f64::INFINITY, f64::min);
         let max_val = all_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let margin = (max_val - min_val).abs() * 0.1;
-        let y_min = if (max_val - min_val).abs() < f64::EPSILON {
+        let mut y_min = if (max_val - min_val).abs() < f64::EPSILON {
             min_val - 1.0
         } else {
             min_val - margin
         };
+        if min_val >= 0.0 && y_min < 0.0 {
+            y_min = 0.0;
+        }
         let y_max = if (max_val - min_val).abs() < f64::EPSILON {
             max_val + 1.0
         } else {
