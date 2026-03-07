@@ -83,7 +83,7 @@ fn calc_y_range(values: &[f64]) -> (f64, f64) {
     let y_min = if (max_val - min_val).abs() < f64::EPSILON {
         min_val - 1.0
     } else {
-        (min_val - margin).min(0.0)
+        min_val - margin
     };
     let y_max = if (max_val - min_val).abs() < f64::EPSILON {
         max_val + 1.0
@@ -351,7 +351,7 @@ fn render_token_lines_chart_into(
         let y_min = if (max_val - min_val).abs() < f64::EPSILON {
             min_val - 1.0
         } else {
-            (min_val - margin).min(0.0)
+            min_val - margin
         };
         let y_max = if (max_val - min_val).abs() < f64::EPSILON {
             max_val + 1.0
