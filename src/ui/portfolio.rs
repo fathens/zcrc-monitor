@@ -123,6 +123,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
 
         let periods = app.get_eval_periods();
         if let Some(ep) = periods.row_data(nearest_idx) {
+            app.set_eval_period_selected_initial_value(ep.initial_value.clone());
             let period_id = ep.period_id.to_string();
             fetch_holdings(weak.clone(), c.clone(), period_id);
         }
@@ -172,6 +173,7 @@ fn clear_holdings(app: &AppWindow) {
     app.set_eval_period_holdings_loaded(false);
     app.set_line_chart_image(Image::default());
     app.set_bar_chart_image(Image::default());
+    app.set_eval_period_selected_initial_value("".into());
 }
 
 fn get_page_info(weak: &Weak<AppWindow>) -> (i32, i32) {
@@ -228,6 +230,12 @@ fn refresh_eval_periods(
                 // 最新の期間を自動選択してホールディングをフェッチ
                 if let Some(first) = items.first() {
                     let period_id = first.period_id.clone();
+                    let near = first.initial_value.to_near();
+                    let near_f64 = near.as_bigdecimal().to_f64().unwrap_or(0.0);
+                    let display = chart::format_compact(near_f64);
+                    app.set_eval_period_selected_initial_value(SharedString::from(format!(
+                        "{display} NEAR"
+                    )));
                     app.set_eval_period_selected_index(0);
                     fetch_holdings(weak.clone(), client.clone(), period_id);
                 }

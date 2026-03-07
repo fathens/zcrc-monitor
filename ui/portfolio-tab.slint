@@ -24,6 +24,7 @@ export component PortfolioTab inherits VerticalLayout {
     in property <image> bar-chart-image;
     in-out property <int> chart-mode: 0; // 0=全体推移, 1=トークン別
     in property <[SlintChartZone]> chart-zones: [];
+    in property <string> eval-period-selected-initial-value: "";
 
     callback eval-periods-refresh();
     callback eval-period-select(/* index */ int);
@@ -111,6 +112,14 @@ export component PortfolioTab inherits VerticalLayout {
         color: #9e9e9e;
         horizontal-alignment: center;
         font-size: 14px;
+    }
+
+    // === 初期投資額 ===
+    if root.eval-period-selected-index >= 0 && root.eval-period-selected-initial-value != "" : Text {
+        text: "初期投資: " + root.eval-period-selected-initial-value;
+        font-size: 14px;
+        font-weight: 500;
+        color: #333333;
     }
 
     // === Holdings Charts ===
