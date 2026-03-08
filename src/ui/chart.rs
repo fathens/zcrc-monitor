@@ -275,22 +275,6 @@ pub fn render_eval_periods_chart(
     }
 }
 
-/// ビューポート範囲に基づいて評価期間チャートを再計算する
-pub fn rerender_eval_periods_for_viewport(
-    data: &EvalPeriodsData,
-    viewport_x: f32,
-    visible_width: f32,
-) -> (Vec<(f32, f32)>, String, Vec<(String, f32)>) {
-    let visible_values = data.visible_values(viewport_x, visible_width);
-    let (y_min, y_max) = calc_y_range(&visible_values);
-    let plot_top = CHART_MARGIN_TOP as f32;
-    let plot_bottom = data.height as f32 - CHART_X_LABEL_SIZE as f32;
-    let chart_points = calc_eval_chart_points(data, y_min, y_max);
-    let line_path = build_line_path_commands(&chart_points);
-    let y_labels = calc_y_labels(y_min, y_max, 4, plot_top, plot_bottom);
-    (chart_points, line_path, y_labels)
-}
-
 /// total_value_wnear の時系列推移を折れ線グラフでレンダリングする。
 /// 生バイト列から slint::Image を構築する。
 pub fn image_from_raw_rgb8(data: &[u8], width: u32, height: u32) -> Image {
