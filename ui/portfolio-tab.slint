@@ -89,6 +89,7 @@ export component PortfolioTab inherits VerticalLayout {
             for label in root.eval-periods-y-labels : Text {
                 text: label.text;
                 y: label.y-pos * 1px - 7px;
+                animate y { duration: 300ms; easing: ease-in-out; }
                 width: 60px;
                 horizontal-alignment: right;
                 font-size: 12px;
@@ -181,6 +182,7 @@ export component PortfolioTab inherits VerticalLayout {
             for label in root.line-chart-y-labels : Text {
                 text: label.text;
                 y: label.y-pos * 1px - 7px;
+                animate y { duration: 300ms; easing: ease-in-out; }
                 width: 65px;
                 horizontal-alignment: right;
                 font-size: 12px;
@@ -204,6 +206,7 @@ export component PortfolioTab inherits VerticalLayout {
             for label in root.bar-chart-y-labels : Text {
                 text: label.text;
                 y: label.y-pos * 1px - 7px;
+                animate y { duration: 300ms; easing: ease-in-out; }
                 width: 65px;
                 horizontal-alignment: right;
                 font-size: 12px;
