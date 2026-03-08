@@ -3,7 +3,7 @@ import { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintToken
 import { SettingsTab } from "settings-tab.slint";
 import { PortfolioTab } from "portfolio-tab.slint";
 
-export { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding, SlintChartZone, SlintYLabel }
+export { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding, SlintChartZone, SlintYLabel, SlintChartPoint, SlintXLabel }
 
 export component AppWindow inherits Window {
     title: "zcrc-monitor";
@@ -44,7 +44,9 @@ export component AppWindow inherits Window {
     in property <bool> eval-period-holdings-loaded <=> portfolio.eval-period-holdings-loaded;
 
     in property <[SlintYLabel]> eval-periods-y-labels <=> portfolio.eval-periods-y-labels;
-    in property <image> eval-periods-chart-body-image <=> portfolio.eval-periods-chart-body-image;
+    in property <string> eval-periods-line-path <=> portfolio.eval-periods-line-path;
+    in property <[SlintChartPoint]> eval-periods-points <=> portfolio.eval-periods-points;
+    in property <[SlintXLabel]> eval-periods-x-labels <=> portfolio.eval-periods-x-labels;
     in property <int> eval-periods-chart-width <=> portfolio.eval-periods-chart-width;
     in property <image> line-chart-image <=> portfolio.line-chart-image;
     in property <image> bar-chart-image <=> portfolio.bar-chart-image;
