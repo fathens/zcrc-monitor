@@ -1,9 +1,9 @@
 import { Button } from "std-widgets.slint";
-import { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding, SlintChartZone, SlintYLabel, SlintChartPoint, SlintXLabel, SlintLineSegment } from "types.slint";
+import { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding, SlintChartZone, SlintYLabel, SlintChartPoint, SlintXLabel } from "types.slint";
 import { SettingsTab } from "settings-tab.slint";
 import { PortfolioTab } from "portfolio-tab.slint";
 
-export { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding, SlintChartZone, SlintYLabel, SlintChartPoint, SlintXLabel, SlintLineSegment }
+export { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintTokenHolding, SlintPortfolioHolding, SlintChartZone, SlintYLabel, SlintChartPoint, SlintXLabel }
 
 export component AppWindow inherits Window {
     title: "zcrc-monitor";
@@ -44,7 +44,7 @@ export component AppWindow inherits Window {
     in property <bool> eval-period-holdings-loaded <=> portfolio.eval-period-holdings-loaded;
 
     in property <[SlintYLabel]> eval-periods-y-labels <=> portfolio.eval-periods-y-labels;
-    in property <[SlintLineSegment]> eval-periods-line-segments <=> portfolio.eval-periods-line-segments;
+    in property <string> eval-periods-line-path <=> portfolio.eval-periods-line-path;
     in property <[SlintChartPoint]> eval-periods-points <=> portfolio.eval-periods-points;
     in property <[SlintXLabel]> eval-periods-x-labels <=> portfolio.eval-periods-x-labels;
     in property <int> eval-periods-chart-width <=> portfolio.eval-periods-chart-width;

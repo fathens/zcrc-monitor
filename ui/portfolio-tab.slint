@@ -1,5 +1,5 @@
 import { Button, ListView } from "std-widgets.slint";
-import { SlintEvaluationPeriod, SlintPortfolioHolding, SlintChartZone, SlintYLabel, SlintChartPoint, SlintXLabel, SlintLineSegment } from "types.slint";
+import { SlintEvaluationPeriod, SlintPortfolioHolding, SlintChartZone, SlintYLabel, SlintChartPoint, SlintXLabel } from "types.slint";
 
 export component PortfolioTab inherits VerticalLayout {
     padding: 8px;
@@ -18,7 +18,7 @@ export component PortfolioTab inherits VerticalLayout {
     in property <bool> eval-period-holdings-loaded: false;
 
     in property <[SlintYLabel]> eval-periods-y-labels: [];
-    in property <[SlintLineSegment]> eval-periods-line-segments: [];
+    in property <string> eval-periods-line-path: "";
     in property <[SlintChartPoint]> eval-periods-points: [];
     in property <[SlintXLabel]> eval-periods-x-labels: [];
     in property <int> eval-periods-chart-width: 0;
@@ -114,18 +114,16 @@ export component PortfolioTab inherits VerticalLayout {
                 background: white;
             }
 
-            // 折れ線（回転付き Rectangle 線分）
-            for seg in root.eval-periods-line-segments : Rectangle {
-                x: seg.cx * 1px - seg.len / 2 * 1px;
-                y: seg.cy * 1px - 1px;
-                width: seg.len * 1px;
-                height: 2px;
-                background: #1976d2;
-                transform-rotation: seg.angle * 1deg;
-                animate x { duration: 200ms; easing: ease-out; }
-                animate y { duration: 200ms; easing: ease-out; }
-                animate width { duration: 200ms; easing: ease-out; }
-                animate transform-rotation { duration: 200ms; easing: ease-out; }
+            // 折れ線（fill ポリゴン — stroke 不使用で座標ずれを回避）
+            Path {
+                width: root.eval-periods-chart-width * 1px;
+                height: 150px;
+                viewbox-x: 0;
+                viewbox-y: 0;
+                viewbox-width: root.eval-periods-chart-width;
+                viewbox-height: 150;
+                commands: root.eval-periods-line-path;
+                fill: #1976d2;
             }
 
             // データ点（円マーカー）

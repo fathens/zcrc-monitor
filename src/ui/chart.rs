@@ -40,7 +40,7 @@ pub struct EvalPeriodsChart {
     pub y_labels: Vec<(String, f32)>,
     pub x_labels: Vec<(String, f32)>,
     pub chart_points: Vec<(f32, f32)>,
-    pub line_segments: Vec<(f32, f32, f32, f32)>,
+    pub line_path: String,
     pub data: EvalPeriodsData,
     /// 時間順に並んだ (timestamp, 元の periods 配列のインデックス)
     pub sorted_points: Vec<(i64, usize)>,
@@ -161,23 +161,28 @@ pub fn calc_eval_chart_points(data: &EvalPeriodsData, y_min: f64, y_max: f64) ->
         .collect()
 }
 
-/// 連続する点ペアから線分データ (cx, cy, length, angle_degrees) を生成する。
-/// 各線分は回転付き Rectangle として描画される。
-pub fn calc_eval_line_segments(points: &[(f32, f32)]) -> Vec<(f32, f32, f32, f32)> {
-    points
-        .windows(2)
-        .map(|w| {
-            let (x1, y1) = w[0];
-            let (x2, y2) = w[1];
-            let dx = x2 - x1;
-            let dy = y2 - y1;
-            let len = (dx * dx + dy * dy).sqrt();
-            let angle = dy.atan2(dx).to_degrees();
-            let cx = (x1 + x2) / 2.0;
-            let cy = (y1 + y2) / 2.0;
-            (cx, cy, len, angle)
-        })
-        .collect()
+/// データ点から fill 用ポリゴンパスを生成する。
+/// 上辺（y - half_width）→ 下辺（y + half_width, 逆順）で閉じたポリゴンを作り、
+/// fill で太い線を描画する（stroke のオフセット問題を回避）。
+pub fn build_filled_line_path(points: &[(f32, f32)], half_width: f32) -> String {
+    if points.len() < 2 {
+        return String::new();
+    }
+    let mut s = String::with_capacity(points.len() * 40 + 20);
+    // 上辺（y - half_width）
+    for (i, &(x, y)) in points.iter().enumerate() {
+        if i == 0 {
+            s.push_str(&format!("M {} {}", x, y - half_width));
+        } else {
+            s.push_str(&format!(" L {} {}", x, y - half_width));
+        }
+    }
+    // 下辺（y + half_width, 逆順）
+    for &(x, y) in points.iter().rev() {
+        s.push_str(&format!(" L {} {}", x, y + half_width));
+    }
+    s.push_str(" Z");
+    s
 }
 
 /// X 軸ラベルを生成する（最大10個の等間隔ラベル）
@@ -222,7 +227,7 @@ pub fn render_eval_periods_chart(
             y_labels: vec![],
             x_labels: vec![],
             chart_points: vec![],
-            line_segments: vec![],
+            line_path: String::new(),
             data: EvalPeriodsData::default(),
             sorted_points: vec![],
         };
@@ -263,7 +268,7 @@ pub fn render_eval_periods_chart(
     let plot_bottom = height as f32 - CHART_X_LABEL_SIZE as f32;
     let y_labels = calc_y_labels(y_min, y_max, 4, plot_top, plot_bottom);
     let chart_points = calc_eval_chart_points(&chart_data, y_min, y_max);
-    let line_segments = calc_eval_line_segments(&chart_points);
+    let line_path = build_filled_line_path(&chart_points, 1.0);
     let x_labels = calc_eval_x_labels(&chart_data);
 
     let sorted_points: Vec<(i64, usize)> = points.iter().map(|&(ts, _, idx)| (ts, idx)).collect();
@@ -272,7 +277,7 @@ pub fn render_eval_periods_chart(
         y_labels,
         x_labels,
         chart_points,
-        line_segments,
+        line_path,
         data: chart_data,
         sorted_points,
     }

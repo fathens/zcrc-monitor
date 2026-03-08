@@ -6,8 +6,8 @@ use crate::grpc::GrpcClient;
 use crate::grpc::portfolio::{EvaluationPeriodItem, PortfolioHoldingItem, TokenHoldingItem};
 use crate::ui::chart;
 use crate::{
-    AppWindow, SlintChartPoint, SlintChartZone, SlintEvaluationPeriod, SlintLineSegment,
-    SlintPortfolioHolding, SlintTokenHolding, SlintXLabel, SlintYLabel,
+    AppWindow, SlintChartPoint, SlintChartZone, SlintEvaluationPeriod, SlintPortfolioHolding,
+    SlintTokenHolding, SlintXLabel, SlintYLabel,
 };
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel, Weak};
 
@@ -32,8 +32,6 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     let click_info: Rc<RefCell<ChartClickInfo>> = Rc::new(RefCell::new(ChartClickInfo::default()));
     let points_model: Rc<RefCell<Option<Rc<VecModel<SlintChartPoint>>>>> =
         Rc::new(RefCell::new(None));
-    let segments_model: Rc<RefCell<Option<Rc<VecModel<SlintLineSegment>>>>> =
-        Rc::new(RefCell::new(None));
 
     // 初回ロード
     refresh_eval_periods(
@@ -41,7 +39,6 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
         client.clone(),
         click_info.clone(),
         points_model.clone(),
-        segments_model.clone(),
         0,
         20,
     );
@@ -51,7 +48,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     let c = client.clone();
     let ci = click_info.clone();
     let pm = points_model.clone();
-    let sm = segments_model.clone();
+
     app.on_eval_periods_refresh(move || {
         let (page, page_size) = get_page_info(&weak);
         refresh_eval_periods(
@@ -59,7 +56,6 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
             c.clone(),
             ci.clone(),
             pm.clone(),
-            sm.clone(),
             page,
             page_size,
         );
@@ -94,7 +90,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     let c = client.clone();
     let ci = click_info.clone();
     let pm = points_model.clone();
-    let sm = segments_model.clone();
+
     app.on_eval_periods_next_page(move || {
         let Some(app) = weak.upgrade() else {
             return;
@@ -109,7 +105,6 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
             c.clone(),
             ci.clone(),
             pm.clone(),
-            sm.clone(),
             page,
             page_size,
         );
@@ -120,7 +115,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     let c = client.clone();
     let ci = click_info.clone();
     let pm = points_model.clone();
-    let sm = segments_model.clone();
+
     app.on_eval_periods_prev_page(move || {
         let Some(app) = weak.upgrade() else {
             return;
@@ -135,7 +130,6 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
             c.clone(),
             ci.clone(),
             pm.clone(),
-            sm.clone(),
             page,
             page_size,
         );
@@ -145,7 +139,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     let weak = app.as_weak();
     let ci = click_info.clone();
     let pm = points_model.clone();
-    let sm = segments_model.clone();
+
     app.on_eval_period_viewport_changed(move |viewport_x, visible_width| {
         let Some(app) = weak.upgrade() else {
             return;
@@ -172,11 +166,9 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
 
         // 最終座標を計算
         let final_points;
-        let final_segments;
         {
             let info = ci.borrow();
             final_points = chart::calc_eval_chart_points(&info.eval_data, to_y_min, to_y_max);
-            final_segments = chart::calc_eval_line_segments(&final_points);
         }
 
         // 点モデルを更新（Slint の animate y が 200ms で遷移）
@@ -188,14 +180,9 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
             }
         }
 
-        // 線分モデルを更新（Slint の animate x/y/width/angle が 200ms で遷移）
-        if let Some(model) = sm.borrow().as_ref() {
-            for (i, &(cx, cy, len, angle)) in final_segments.iter().enumerate() {
-                if i < model.row_count() {
-                    model.set_row_data(i, SlintLineSegment { cx, cy, len, angle });
-                }
-            }
-        }
+        // 線のパス文字列を更新
+        let line_path = chart::build_filled_line_path(&final_points, 1.0);
+        app.set_eval_periods_line_path(SharedString::from(&line_path));
 
         // Y軸ラベルを更新（Slint の animate y が 300ms で遷移）
         let info = ci.borrow();
@@ -316,7 +303,6 @@ fn refresh_eval_periods(
     client: GrpcClient,
     click_info: Rc<RefCell<ChartClickInfo>>,
     points_model: Rc<RefCell<Option<Rc<VecModel<SlintChartPoint>>>>>,
-    segments_model: Rc<RefCell<Option<Rc<VecModel<SlintLineSegment>>>>>,
     page: i32,
     page_size: i32,
 ) {
@@ -340,15 +326,8 @@ fn refresh_eval_periods(
                     .collect();
                 app.set_eval_periods_y_labels(ModelRc::new(VecModel::from(slint_y_labels)));
 
-                // 線分モデル
-                let slint_segments: Vec<SlintLineSegment> = periods_chart
-                    .line_segments
-                    .iter()
-                    .map(|&(cx, cy, len, angle)| SlintLineSegment { cx, cy, len, angle })
-                    .collect();
-                let seg_model = Rc::new(VecModel::from(slint_segments));
-                app.set_eval_periods_line_segments(ModelRc::from(seg_model.clone()));
-                *segments_model.borrow_mut() = Some(seg_model);
+                // SVGパス文字列（fill ポリゴン）
+                app.set_eval_periods_line_path(SharedString::from(&periods_chart.line_path));
 
                 // データ点モデル
                 let slint_points: Vec<SlintChartPoint> = periods_chart
