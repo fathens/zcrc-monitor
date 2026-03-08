@@ -38,7 +38,9 @@ pub fn format_compact(value: f64) -> String {
 /// 評価期間チャートの描画結果
 pub struct EvalPeriodsChart {
     pub y_labels: Vec<(String, f32)>,
-    pub body: Image,
+    pub x_labels: Vec<(String, f32)>,
+    pub chart_points: Vec<(f32, f32)>,
+    pub line_path: String,
     pub data: EvalPeriodsData,
     /// 時間順に並んだ (timestamp, 元の periods 配列のインデックス)
     pub sorted_points: Vec<(i64, usize)>,
@@ -94,7 +96,7 @@ const CHART_MARGIN_TOP: u32 = 5;
 const CHART_X_LABEL_SIZE: u32 = 30;
 
 /// Y軸ラベルを等間隔で n 個生成し、各ラベルのテキストとピクセルY座標を返す。
-fn calc_y_labels(
+pub fn calc_y_labels(
     y_min: f64,
     y_max: f64,
     n: usize,
@@ -116,7 +118,7 @@ fn calc_y_labels(
 }
 
 /// Y 軸範囲を計算する。
-fn calc_y_range(values: &[f64]) -> (f64, f64) {
+pub fn calc_y_range(values: &[f64]) -> (f64, f64) {
     let min_val = values.iter().cloned().fold(f64::INFINITY, f64::min);
     let max_val = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     let margin = (max_val - min_val).abs() * 0.1;
@@ -133,57 +135,78 @@ fn calc_y_range(values: &[f64]) -> (f64, f64) {
     (y_min, y_max)
 }
 
-/// 評価期間チャート本体を描画する
-fn render_eval_body(data: &EvalPeriodsData, y_min: f64, y_max: f64) -> Image {
-    let mut buf = SharedPixelBuffer::new(data.body_width, data.height);
-    {
-        let backend =
-            BitMapBackend::with_buffer(buf.make_mut_bytes(), (data.body_width, data.height));
-        let root = backend.into_drawing_area();
-        root.fill(&WHITE).unwrap();
+/// データ点のピクセル座標を計算する
+pub fn calc_eval_chart_points(data: &EvalPeriodsData, y_min: f64, y_max: f64) -> Vec<(f32, f32)> {
+    let plot_top = CHART_MARGIN_TOP as f64;
+    let plot_bottom = data.height as f64 - CHART_X_LABEL_SIZE as f64;
+    let pw = data.plot_width() as f64;
+    let x_range = (data.x_max - data.x_min) as f64;
+    let y_range = y_max - y_min;
 
-        let mut chart = ChartBuilder::on(&root)
-            .margin_top(CHART_MARGIN_TOP)
-            .margin_bottom(0)
-            .margin_left(0)
-            .margin_right(10)
-            .y_label_area_size(0)
-            .x_label_area_size(CHART_X_LABEL_SIZE)
-            .build_cartesian_2d(data.x_min..data.x_max, y_min..y_max)
-            .unwrap();
+    data.points
+        .iter()
+        .map(|&(ts, v, _)| {
+            let x_px = if x_range > 0.0 {
+                (ts - data.x_min) as f64 / x_range * pw
+            } else {
+                pw / 2.0
+            };
+            let y_px = if y_range > 0.0 {
+                plot_top + (1.0 - (v - y_min) / y_range) * (plot_bottom - plot_top)
+            } else {
+                (plot_top + plot_bottom) / 2.0
+            };
+            (x_px as f32, y_px as f32)
+        })
+        .collect()
+}
 
-        chart
-            .configure_mesh()
-            .disable_x_mesh()
-            .disable_y_mesh()
-            .x_labels(data.points.len().min(10))
-            .x_label_formatter(&|ts| {
-                chrono::DateTime::from_timestamp(*ts, 0)
-                    .map(|dt| dt.format("%m/%d").to_string())
-                    .unwrap_or_default()
-            })
-            .y_labels(0)
-            .draw()
-            .unwrap();
-
-        chart
-            .draw_series(LineSeries::new(
-                data.points.iter().map(|&(ts, v, _)| (ts, v)),
-                BLUE.stroke_width(2),
-            ))
-            .unwrap();
-
-        chart
-            .draw_series(
-                data.points
-                    .iter()
-                    .map(|&(ts, v, _)| Circle::new((ts, v), 4, BLUE.filled())),
-            )
-            .unwrap();
-
-        root.present().unwrap();
+/// (x_px, y_px) のスライスから SVG パス文字列を生成する
+pub fn build_line_path_commands(points: &[(f32, f32)]) -> String {
+    if points.is_empty() {
+        return String::new();
     }
-    Image::from_rgb8(buf)
+    let mut s = String::with_capacity(points.len() * 20);
+    for (i, &(x, y)) in points.iter().enumerate() {
+        if i == 0 {
+            s.push_str(&format!("M {} {}", x, y));
+        } else {
+            s.push_str(&format!(" L {} {}", x, y));
+        }
+    }
+    s
+}
+
+/// X 軸ラベルを生成する（最大10個の等間隔ラベル）
+pub fn calc_eval_x_labels(data: &EvalPeriodsData) -> Vec<(String, f32)> {
+    if data.points.is_empty() {
+        return vec![];
+    }
+    let pw = data.plot_width() as f64;
+    let x_range = (data.x_max - data.x_min) as f64;
+    let n = data.points.len().min(10);
+    let step = if data.points.len() <= n {
+        1
+    } else {
+        data.points.len() / n
+    };
+
+    data.points
+        .iter()
+        .step_by(step)
+        .take(n)
+        .map(|&(ts, _, _)| {
+            let x_px = if x_range > 0.0 {
+                (ts - data.x_min) as f64 / x_range * pw
+            } else {
+                pw / 2.0
+            };
+            let label = chrono::DateTime::from_timestamp(ts, 0)
+                .map(|dt| dt.format("%m/%d").to_string())
+                .unwrap_or_default();
+            (label, x_px as f32)
+        })
+        .collect()
 }
 
 /// 評価期間の initial_value を横スクロール折れ線グラフでレンダリングする。
@@ -194,7 +217,9 @@ pub fn render_eval_periods_chart(
     if periods.is_empty() {
         return EvalPeriodsChart {
             y_labels: vec![],
-            body: Image::default(),
+            x_labels: vec![],
+            chart_points: vec![],
+            line_path: String::new(),
             data: EvalPeriodsData::default(),
             sorted_points: vec![],
         };
@@ -234,31 +259,36 @@ pub fn render_eval_periods_chart(
     let plot_top = CHART_MARGIN_TOP as f32;
     let plot_bottom = height as f32 - CHART_X_LABEL_SIZE as f32;
     let y_labels = calc_y_labels(y_min, y_max, 4, plot_top, plot_bottom);
-    let body = render_eval_body(&chart_data, y_min, y_max);
+    let chart_points = calc_eval_chart_points(&chart_data, y_min, y_max);
+    let line_path = build_line_path_commands(&chart_points);
+    let x_labels = calc_eval_x_labels(&chart_data);
 
     let sorted_points: Vec<(i64, usize)> = points.iter().map(|&(ts, _, idx)| (ts, idx)).collect();
 
     EvalPeriodsChart {
         y_labels,
-        body,
+        x_labels,
+        chart_points,
+        line_path,
         data: chart_data,
         sorted_points,
     }
 }
 
-/// ビューポート範囲に基づいて評価期間チャートを再描画する
+/// ビューポート範囲に基づいて評価期間チャートを再計算する
 pub fn rerender_eval_periods_for_viewport(
     data: &EvalPeriodsData,
     viewport_x: f32,
     visible_width: f32,
-) -> (Image, Vec<(String, f32)>) {
+) -> (Vec<(f32, f32)>, String, Vec<(String, f32)>) {
     let visible_values = data.visible_values(viewport_x, visible_width);
     let (y_min, y_max) = calc_y_range(&visible_values);
     let plot_top = CHART_MARGIN_TOP as f32;
     let plot_bottom = data.height as f32 - CHART_X_LABEL_SIZE as f32;
-    let body = render_eval_body(data, y_min, y_max);
+    let chart_points = calc_eval_chart_points(data, y_min, y_max);
+    let line_path = build_line_path_commands(&chart_points);
     let y_labels = calc_y_labels(y_min, y_max, 4, plot_top, plot_bottom);
-    (body, y_labels)
+    (chart_points, line_path, y_labels)
 }
 
 /// total_value_wnear の時系列推移を折れ線グラフでレンダリングする。
