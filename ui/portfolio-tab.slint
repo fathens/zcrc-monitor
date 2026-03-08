@@ -118,6 +118,10 @@ export component PortfolioTab inherits VerticalLayout {
             Path {
                 width: root.eval-periods-chart-width * 1px;
                 height: 150px;
+                viewbox-x: 0;
+                viewbox-y: 0;
+                viewbox-width: root.eval-periods-chart-width;
+                viewbox-height: 150;
                 commands: root.eval-periods-line-path;
                 stroke: #1976d2;
                 stroke-width: 2px;
