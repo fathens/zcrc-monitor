@@ -1,5 +1,5 @@
 import { Button, ListView } from "std-widgets.slint";
-import { SlintEvaluationPeriod, SlintPortfolioHolding, SlintChartZone } from "types.slint";
+import { SlintEvaluationPeriod, SlintPortfolioHolding, SlintChartZone, SlintYLabel, SlintChartPoint, SlintXLabel } from "types.slint";
 
 export component PortfolioTab inherits VerticalLayout {
     padding: 8px;
@@ -17,21 +17,31 @@ export component PortfolioTab inherits VerticalLayout {
     in property <string> eval-period-holdings-error: "";
     in property <bool> eval-period-holdings-loaded: false;
 
-    in property <image> eval-periods-y-axis-image;
-    in property <image> eval-periods-chart-body-image;
+    in property <[SlintYLabel]> eval-periods-y-labels: [];
+    in property <string> eval-periods-line-path: "";
+    in property <[SlintChartPoint]> eval-periods-points: [];
+    in property <[SlintXLabel]> eval-periods-x-labels: [];
     in property <int> eval-periods-chart-width: 0;
     in property <image> line-chart-image;
     in property <image> bar-chart-image;
+    in property <[SlintYLabel]> line-chart-y-labels: [];
+    in property <[SlintYLabel]> bar-chart-y-labels: [];
     in-out property <int> chart-mode: 0; // 0=全体推移, 1=トークン別
     in property <[SlintChartZone]> chart-zones: [];
+    in property <string> eval-period-selected-initial-value: "";
 
     callback eval-periods-refresh();
     callback eval-period-select(/* index */ int);
     callback eval-periods-next-page();
     callback eval-periods-prev-page();
     callback eval-period-chart-click(/* x_px */ float);
+    callback eval-period-viewport-changed(/* viewport_x */ float, /* visible_width */ float);
 
-    // === 評価期間チャート（横スクロール、Y軸固定） ===
+    // スクロール停止検出用プロパティ
+    property <float> prev-eval-viewport-x: 0;
+    property <float> settled-eval-viewport-x: 0;
+
+    // === 評価期間チャート（横スクロール、Y軸動的） ===
     HorizontalLayout {
         spacing: 4px;
         alignment: start;
@@ -57,16 +67,39 @@ export component PortfolioTab inherits VerticalLayout {
     if root.eval-periods-chart-width > 0 : Rectangle {
         height: 150px;
 
-        Image {
-            source: root.eval-periods-y-axis-image;
+        // スクロール停止を検出して Y 軸を更新するデバウンスタイマー
+        // viewport-x が変化すると running=true、300ms 後に安定を確認して発火
+        eval-settle-timer := Timer {
+            interval: 300ms;
+            running: (-eval-flick.viewport-x / 1px) != root.settled-eval-viewport-x;
+            triggered => {
+                if (-eval-flick.viewport-x / 1px) == root.prev-eval-viewport-x {
+                    // 前回チェック時から変化なし → スクロール停止
+                    root.settled-eval-viewport-x = root.prev-eval-viewport-x;
+                    root.eval-period-viewport-changed(root.settled-eval-viewport-x, eval-flick.width / 1px);
+                }
+                root.prev-eval-viewport-x = -eval-flick.viewport-x / 1px;
+            }
+        }
+
+        Rectangle {
             x: 0;
             y: 0;
             width: 65px;
             height: 150px;
-            image-fit: fill;
+
+            for label in root.eval-periods-y-labels : Text {
+                text: label.text;
+                y: label.y-pos * 1px - 7px;
+                animate y { duration: 300ms; easing: ease-in-out; }
+                width: 60px;
+                horizontal-alignment: right;
+                font-size: 12px;
+                color: #333333;
+            }
         }
 
-        Flickable {
+        eval-flick := Flickable {
             x: 65px;
             y: 0;
             width: parent.width - 65px;
@@ -74,11 +107,43 @@ export component PortfolioTab inherits VerticalLayout {
             viewport-width: root.eval-periods-chart-width * 1px;
             viewport-height: 150px;
 
-            Image {
-                source: root.eval-periods-chart-body-image;
+            // 白背景
+            Rectangle {
                 width: root.eval-periods-chart-width * 1px;
                 height: 150px;
-                image-fit: fill;
+                background: white;
+            }
+
+            // 折れ線（fill ポリゴン — stroke 不使用で座標ずれを回避）
+            Path {
+                width: root.eval-periods-chart-width * 1px;
+                height: 150px;
+                viewbox-x: 0;
+                viewbox-y: 0;
+                viewbox-width: root.eval-periods-chart-width;
+                viewbox-height: 150;
+                commands: root.eval-periods-line-path;
+                fill: #1976d2;
+            }
+
+            // データ点（円マーカー）
+            for point in root.eval-periods-points : Rectangle {
+                x: point.x * 1px - 4px;
+                y: point.y * 1px - 4px;
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: #1976d2;
+                animate y { duration: 200ms; easing: ease-out; }
+            }
+
+            // X軸ラベル
+            for label in root.eval-periods-x-labels : Text {
+                x: label.x-pos * 1px - 15px;
+                y: 150px - 25px;
+                text: label.text;
+                font-size: 11px;
+                color: #666666;
             }
 
             // ホバーゾーンハイライト（リアクティブ：mouse-x でゾーン自動判定）
@@ -105,6 +170,22 @@ export component PortfolioTab inherits VerticalLayout {
         }
     }
 
+    // === Loading indicator ===
+    if root.eval-period-selected-index >= 0 && !root.eval-period-holdings-loaded && root.eval-period-holdings-error == "" : Text {
+        text: "読み込み中...";
+        color: #9e9e9e;
+        horizontal-alignment: center;
+        font-size: 14px;
+    }
+
+    // === 初期投資額 ===
+    if root.eval-period-selected-index >= 0 && root.eval-period-selected-initial-value != "" : Text {
+        text: "初期投資: " + root.eval-period-selected-initial-value;
+        font-size: 14px;
+        font-weight: 500;
+        color: #333333;
+    }
+
     // === Holdings Charts ===
     if root.eval-period-holdings-loaded && root.eval-period-holdings.length > 0 : Rectangle {
         height: 1px;
@@ -126,16 +207,52 @@ export component PortfolioTab inherits VerticalLayout {
         }
     }
 
-    if root.chart-mode == 0 && root.eval-period-holdings-loaded && root.eval-period-holdings.length > 0 : Image {
-        source: root.line-chart-image;
+    if root.chart-mode == 0 && root.eval-period-holdings-loaded && root.eval-period-holdings.length > 0 : HorizontalLayout {
         height: 200px;
-        image-fit: contain;
+
+        Rectangle {
+            width: 70px;
+
+            for label in root.line-chart-y-labels : Text {
+                text: label.text;
+                y: label.y-pos * 1px - 7px;
+                animate y { duration: 300ms; easing: ease-in-out; }
+                width: 65px;
+                horizontal-alignment: right;
+                font-size: 12px;
+                color: #333333;
+            }
+        }
+
+        Image {
+            source: root.line-chart-image;
+            horizontal-stretch: 1;
+            image-fit: contain;
+        }
     }
 
-    if root.chart-mode == 1 && root.eval-period-holdings-loaded && root.eval-period-holdings.length > 0 : Image {
-        source: root.bar-chart-image;
+    if root.chart-mode == 1 && root.eval-period-holdings-loaded && root.eval-period-holdings.length > 0 : HorizontalLayout {
         height: 200px;
-        image-fit: contain;
+
+        Rectangle {
+            width: 70px;
+
+            for label in root.bar-chart-y-labels : Text {
+                text: label.text;
+                y: label.y-pos * 1px - 7px;
+                animate y { duration: 300ms; easing: ease-in-out; }
+                width: 65px;
+                horizontal-alignment: right;
+                font-size: 12px;
+                color: #333333;
+            }
+        }
+
+        Image {
+            source: root.bar-chart-image;
+            horizontal-stretch: 1;
+            image-fit: contain;
+        }
     }
 
     // === Holdings Table ===
@@ -181,7 +298,7 @@ export component PortfolioTab inherits VerticalLayout {
                     text: th.token;
                     font-size: 13px;
                     color: #555555;
-                    horizontal-stretch: 2;
+                    horizontal-stretch: 1;
                     overflow: elide;
                 }
 
@@ -189,7 +306,7 @@ export component PortfolioTab inherits VerticalLayout {
                     text: th.balance;
                     font-size: 13px;
                     color: #666666;
-                    horizontal-stretch: 1;
+                    min-width: 150px;
                     horizontal-alignment: right;
                 }
 
@@ -197,7 +314,7 @@ export component PortfolioTab inherits VerticalLayout {
                     text: th.value-wnear;
                     font-size: 13px;
                     color: #1976d2;
-                    horizontal-stretch: 1;
+                    min-width: 100px;
                     horizontal-alignment: right;
                 }
             }
