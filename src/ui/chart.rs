@@ -161,12 +161,20 @@ pub fn calc_eval_chart_points(data: &EvalPeriodsData, y_min: f64, y_max: f64) ->
         .collect()
 }
 
-/// (x_px, y_px) のスライスから SVG パス文字列を生成する
-pub fn build_line_path_commands(points: &[(f32, f32)]) -> String {
+/// (x_px, y_px) のスライスから SVG パス文字列を生成する。
+/// chart_width, chart_height で座標系のアンカーポイントを設定し、
+/// Slint Path の自動バウンディングボックスフィットによる座標ずれを防ぐ。
+pub fn build_line_path_commands(
+    points: &[(f32, f32)],
+    chart_width: f32,
+    chart_height: f32,
+) -> String {
     if points.is_empty() {
         return String::new();
     }
-    let mut s = String::with_capacity(points.len() * 20);
+    let mut s = String::with_capacity(points.len() * 20 + 40);
+    // アンカーポイント: 座標系を (0,0)-(width,height) に固定
+    s.push_str(&format!("M 0 0 M {} {} ", chart_width, chart_height));
     for (i, &(x, y)) in points.iter().enumerate() {
         if i == 0 {
             s.push_str(&format!("M {} {}", x, y));
@@ -260,7 +268,7 @@ pub fn render_eval_periods_chart(
     let plot_bottom = height as f32 - CHART_X_LABEL_SIZE as f32;
     let y_labels = calc_y_labels(y_min, y_max, 4, plot_top, plot_bottom);
     let chart_points = calc_eval_chart_points(&chart_data, y_min, y_max);
-    let line_path = build_line_path_commands(&chart_points);
+    let line_path = build_line_path_commands(&chart_points, body_width as f32, height as f32);
     let x_labels = calc_eval_x_labels(&chart_data);
 
     let sorted_points: Vec<(i64, usize)> = points.iter().map(|&(ts, _, idx)| (ts, idx)).collect();

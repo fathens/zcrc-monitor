@@ -199,7 +199,11 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
 
                 let info = ci2.borrow();
                 let points = chart::calc_eval_chart_points(&info.eval_data, y_min, y_max);
-                let path = chart::build_line_path_commands(&points);
+                let path = chart::build_line_path_commands(
+                    &points,
+                    info.eval_data.body_width as f32,
+                    info.eval_data.height as f32,
+                );
                 drop(info);
 
                 if let Some(app) = weak2.upgrade() {
