@@ -6,12 +6,10 @@ use crate::grpc::GrpcClient;
 use crate::grpc::portfolio::{EvaluationPeriodItem, PortfolioHoldingItem, TokenHoldingItem};
 use crate::ui::chart;
 use crate::{
-    AppWindow, SlintChartPoint, SlintChartZone, SlintEvaluationPeriod, SlintPortfolioHolding,
-    SlintTokenHolding, SlintXLabel, SlintYLabel,
+    AppWindow, SlintChartPoint, SlintChartZone, SlintEvaluationPeriod, SlintLineSegment,
+    SlintPortfolioHolding, SlintTokenHolding, SlintXLabel, SlintYLabel,
 };
-use slint::{
-    ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak,
-};
+use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel, Weak};
 
 /// チャートクリック・ホバー時に必要なメタデータ
 #[derive(Default)]
@@ -34,7 +32,8 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     let click_info: Rc<RefCell<ChartClickInfo>> = Rc::new(RefCell::new(ChartClickInfo::default()));
     let points_model: Rc<RefCell<Option<Rc<VecModel<SlintChartPoint>>>>> =
         Rc::new(RefCell::new(None));
-    let anim_timer: Rc<Timer> = Rc::new(Timer::default());
+    let segments_model: Rc<RefCell<Option<Rc<VecModel<SlintLineSegment>>>>> =
+        Rc::new(RefCell::new(None));
 
     // 初回ロード
     refresh_eval_periods(
@@ -42,6 +41,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
         client.clone(),
         click_info.clone(),
         points_model.clone(),
+        segments_model.clone(),
         0,
         20,
     );
@@ -51,6 +51,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     let c = client.clone();
     let ci = click_info.clone();
     let pm = points_model.clone();
+    let sm = segments_model.clone();
     app.on_eval_periods_refresh(move || {
         let (page, page_size) = get_page_info(&weak);
         refresh_eval_periods(
@@ -58,6 +59,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
             c.clone(),
             ci.clone(),
             pm.clone(),
+            sm.clone(),
             page,
             page_size,
         );
@@ -92,6 +94,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     let c = client.clone();
     let ci = click_info.clone();
     let pm = points_model.clone();
+    let sm = segments_model.clone();
     app.on_eval_periods_next_page(move || {
         let Some(app) = weak.upgrade() else {
             return;
@@ -106,6 +109,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
             c.clone(),
             ci.clone(),
             pm.clone(),
+            sm.clone(),
             page,
             page_size,
         );
@@ -116,6 +120,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     let c = client.clone();
     let ci = click_info.clone();
     let pm = points_model.clone();
+    let sm = segments_model.clone();
     app.on_eval_periods_prev_page(move || {
         let Some(app) = weak.upgrade() else {
             return;
@@ -130,6 +135,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
             c.clone(),
             ci.clone(),
             pm.clone(),
+            sm.clone(),
             page,
             page_size,
         );
@@ -139,98 +145,76 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     let weak = app.as_weak();
     let ci = click_info.clone();
     let pm = points_model.clone();
-    let at = anim_timer.clone();
+    let sm = segments_model.clone();
     app.on_eval_period_viewport_changed(move |viewport_x, visible_width| {
-        if weak.upgrade().is_none() {
+        let Some(app) = weak.upgrade() else {
             return;
-        }
+        };
         let visible_values;
-        let from_y_min;
-        let from_y_max;
         {
             let info = ci.borrow();
             if info.eval_data.points.is_empty() {
                 return;
             }
             visible_values = info.eval_data.visible_values(viewport_x, visible_width);
-            from_y_min = info.current_y_min;
-            from_y_max = info.current_y_max;
         }
         let (to_y_min, to_y_max) = chart::calc_y_range(&visible_values);
 
         // 範囲が同じなら何もしない
-        if (to_y_min - from_y_min).abs() < f64::EPSILON
-            && (to_y_max - from_y_max).abs() < f64::EPSILON
-        {
-            return;
-        }
-
-        // 最終座標で点モデルを更新（animate y が 200ms で遷移）
         {
             let info = ci.borrow();
-            let final_points = chart::calc_eval_chart_points(&info.eval_data, to_y_min, to_y_max);
-            if let Some(model) = pm.borrow().as_ref() {
-                for (i, &(x, y)) in final_points.iter().enumerate() {
-                    if i < model.row_count() {
-                        model.set_row_data(i, SlintChartPoint { x, y });
-                    }
+            if (to_y_min - info.current_y_min).abs() < f64::EPSILON
+                && (to_y_max - info.current_y_max).abs() < f64::EPSILON
+            {
+                return;
+            }
+        }
+
+        // 最終座標を計算
+        let final_points;
+        let final_segments;
+        {
+            let info = ci.borrow();
+            final_points = chart::calc_eval_chart_points(&info.eval_data, to_y_min, to_y_max);
+            final_segments = chart::calc_eval_line_segments(&final_points);
+        }
+
+        // 点モデルを更新（Slint の animate y が 200ms で遷移）
+        if let Some(model) = pm.borrow().as_ref() {
+            for (i, &(x, y)) in final_points.iter().enumerate() {
+                if i < model.row_count() {
+                    model.set_row_data(i, SlintChartPoint { x, y });
                 }
             }
         }
 
-        // Timer でパス文字列を段階更新（8フレーム、25ms間隔）
-        let frame = Rc::new(RefCell::new(0u32));
-        let ci2 = ci.clone();
-        let weak2 = weak.clone();
-        let at2 = at.clone();
-        at.start(
-            TimerMode::Repeated,
-            std::time::Duration::from_millis(25),
-            move || {
-                let f = {
-                    let mut f = frame.borrow_mut();
-                    *f += 1;
-                    *f
-                };
-                let t = (f as f64 / 8.0).min(1.0);
-                let eased = ease_out_cubic(t);
-                let y_min = from_y_min + (to_y_min - from_y_min) * eased;
-                let y_max = from_y_max + (to_y_max - from_y_max) * eased;
-
-                let info = ci2.borrow();
-                let points = chart::calc_eval_chart_points(&info.eval_data, y_min, y_max);
-                let path = chart::build_line_path_commands(&points);
-                drop(info);
-
-                if let Some(app) = weak2.upgrade() {
-                    app.set_eval_periods_line_path(SharedString::from(&path));
-
-                    if f >= 8 {
-                        // 最終フレーム: Y軸ラベルも更新
-                        let info = ci2.borrow();
-                        let plot_top = 5.0_f32; // CHART_MARGIN_TOP
-                        let plot_bottom = info.eval_data.height as f32 - 30.0; // CHART_X_LABEL_SIZE
-                        let y_labels =
-                            chart::calc_y_labels(to_y_min, to_y_max, 4, plot_top, plot_bottom);
-                        let slint_y_labels: Vec<SlintYLabel> = y_labels
-                            .iter()
-                            .map(|(text, y_pos)| SlintYLabel {
-                                text: SharedString::from(text.as_str()),
-                                y_pos: *y_pos,
-                            })
-                            .collect();
-                        app.set_eval_periods_y_labels(ModelRc::new(VecModel::from(slint_y_labels)));
-                        drop(info);
-
-                        // current_y_min/max を更新
-                        ci2.borrow_mut().current_y_min = to_y_min;
-                        ci2.borrow_mut().current_y_max = to_y_max;
-
-                        at2.stop();
-                    }
+        // 線分モデルを更新（Slint の animate x/y/width/angle が 200ms で遷移）
+        if let Some(model) = sm.borrow().as_ref() {
+            for (i, &(cx, cy, len, angle)) in final_segments.iter().enumerate() {
+                if i < model.row_count() {
+                    model.set_row_data(i, SlintLineSegment { cx, cy, len, angle });
                 }
-            },
-        );
+            }
+        }
+
+        // Y軸ラベルを更新（Slint の animate y が 300ms で遷移）
+        let info = ci.borrow();
+        let plot_top = 5.0_f32;
+        let plot_bottom = info.eval_data.height as f32 - 30.0;
+        let y_labels = chart::calc_y_labels(to_y_min, to_y_max, 4, plot_top, plot_bottom);
+        let slint_y_labels: Vec<SlintYLabel> = y_labels
+            .iter()
+            .map(|(text, y_pos)| SlintYLabel {
+                text: SharedString::from(text.as_str()),
+                y_pos: *y_pos,
+            })
+            .collect();
+        app.set_eval_periods_y_labels(ModelRc::new(VecModel::from(slint_y_labels)));
+        drop(info);
+
+        // current_y_min/max を更新
+        ci.borrow_mut().current_y_min = to_y_min;
+        ci.borrow_mut().current_y_max = to_y_max;
     });
 
     // eval-period-chart-click: クリック位置から最寄りの期間を選択
@@ -332,6 +316,7 @@ fn refresh_eval_periods(
     client: GrpcClient,
     click_info: Rc<RefCell<ChartClickInfo>>,
     points_model: Rc<RefCell<Option<Rc<VecModel<SlintChartPoint>>>>>,
+    segments_model: Rc<RefCell<Option<Rc<VecModel<SlintLineSegment>>>>>,
     page: i32,
     page_size: i32,
 ) {
@@ -355,8 +340,15 @@ fn refresh_eval_periods(
                     .collect();
                 app.set_eval_periods_y_labels(ModelRc::new(VecModel::from(slint_y_labels)));
 
-                // SVGパス文字列
-                app.set_eval_periods_line_path(SharedString::from(&periods_chart.line_path));
+                // 線分モデル
+                let slint_segments: Vec<SlintLineSegment> = periods_chart
+                    .line_segments
+                    .iter()
+                    .map(|&(cx, cy, len, angle)| SlintLineSegment { cx, cy, len, angle })
+                    .collect();
+                let seg_model = Rc::new(VecModel::from(slint_segments));
+                app.set_eval_periods_line_segments(ModelRc::from(seg_model.clone()));
+                *segments_model.borrow_mut() = Some(seg_model);
 
                 // データ点モデル
                 let slint_points: Vec<SlintChartPoint> = periods_chart
@@ -566,10 +558,6 @@ fn to_slint_portfolio_holding_ref(item: &PortfolioHoldingItem) -> SlintPortfolio
         token_holdings: ModelRc::new(VecModel::from(token_holdings)),
         total_value_wnear: SharedString::from(format!("{total_display} NEAR")),
     }
-}
-
-fn ease_out_cubic(t: f64) -> f64 {
-    1.0 - (1.0 - t).powi(3)
 }
 
 fn spawn(future: impl std::future::Future<Output = ()> + 'static) {

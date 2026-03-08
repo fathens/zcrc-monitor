@@ -40,7 +40,7 @@ pub struct EvalPeriodsChart {
     pub y_labels: Vec<(String, f32)>,
     pub x_labels: Vec<(String, f32)>,
     pub chart_points: Vec<(f32, f32)>,
-    pub line_path: String,
+    pub line_segments: Vec<(f32, f32, f32, f32)>,
     pub data: EvalPeriodsData,
     /// 時間順に並んだ (timestamp, 元の periods 配列のインデックス)
     pub sorted_points: Vec<(i64, usize)>,
@@ -161,22 +161,23 @@ pub fn calc_eval_chart_points(data: &EvalPeriodsData, y_min: f64, y_max: f64) ->
         .collect()
 }
 
-/// (x_px, y_px) のスライスから SVG パス文字列を生成する。
-/// Slint Path の viewbox-* プロパティで座標系を制御するため、
-/// パスデータ自体は純粋なデータ点のみ。
-pub fn build_line_path_commands(points: &[(f32, f32)]) -> String {
-    if points.is_empty() {
-        return String::new();
-    }
-    let mut s = String::with_capacity(points.len() * 20);
-    for (i, &(x, y)) in points.iter().enumerate() {
-        if i == 0 {
-            s.push_str(&format!("M {} {}", x, y));
-        } else {
-            s.push_str(&format!(" L {} {}", x, y));
-        }
-    }
-    s
+/// 連続する点ペアから線分データ (cx, cy, length, angle_degrees) を生成する。
+/// 各線分は回転付き Rectangle として描画される。
+pub fn calc_eval_line_segments(points: &[(f32, f32)]) -> Vec<(f32, f32, f32, f32)> {
+    points
+        .windows(2)
+        .map(|w| {
+            let (x1, y1) = w[0];
+            let (x2, y2) = w[1];
+            let dx = x2 - x1;
+            let dy = y2 - y1;
+            let len = (dx * dx + dy * dy).sqrt();
+            let angle = dy.atan2(dx).to_degrees();
+            let cx = (x1 + x2) / 2.0;
+            let cy = (y1 + y2) / 2.0;
+            (cx, cy, len, angle)
+        })
+        .collect()
 }
 
 /// X 軸ラベルを生成する（最大10個の等間隔ラベル）
@@ -221,7 +222,7 @@ pub fn render_eval_periods_chart(
             y_labels: vec![],
             x_labels: vec![],
             chart_points: vec![],
-            line_path: String::new(),
+            line_segments: vec![],
             data: EvalPeriodsData::default(),
             sorted_points: vec![],
         };
@@ -262,7 +263,7 @@ pub fn render_eval_periods_chart(
     let plot_bottom = height as f32 - CHART_X_LABEL_SIZE as f32;
     let y_labels = calc_y_labels(y_min, y_max, 4, plot_top, plot_bottom);
     let chart_points = calc_eval_chart_points(&chart_data, y_min, y_max);
-    let line_path = build_line_path_commands(&chart_points);
+    let line_segments = calc_eval_line_segments(&chart_points);
     let x_labels = calc_eval_x_labels(&chart_data);
 
     let sorted_points: Vec<(i64, usize)> = points.iter().map(|&(ts, _, idx)| (ts, idx)).collect();
@@ -271,7 +272,7 @@ pub fn render_eval_periods_chart(
         y_labels,
         x_labels,
         chart_points,
-        line_path,
+        line_segments,
         data: chart_data,
         sorted_points,
     }
