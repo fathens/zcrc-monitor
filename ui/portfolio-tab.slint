@@ -33,8 +33,9 @@ export component PortfolioTab inherits VerticalLayout {
     callback eval-periods-next-page();
     callback eval-periods-prev-page();
     callback eval-period-chart-click(/* x_px */ float);
+    callback eval-period-viewport-changed(/* viewport_x */ float, /* visible_width */ float);
 
-    // === 評価期間チャート（横スクロール、Y軸固定） ===
+    // === 評価期間チャート（横スクロール、Y軸動的） ===
     HorizontalLayout {
         spacing: 4px;
         alignment: start;
@@ -76,13 +77,17 @@ export component PortfolioTab inherits VerticalLayout {
             }
         }
 
-        Flickable {
+        eval-flick := Flickable {
             x: 65px;
             y: 0;
             width: parent.width - 65px;
             height: 150px;
             viewport-width: root.eval-periods-chart-width * 1px;
             viewport-height: 150px;
+
+            flicked => {
+                root.eval-period-viewport-changed(-self.viewport-x / 1px, self.width / 1px);
+            }
 
             Image {
                 source: root.eval-periods-chart-body-image;

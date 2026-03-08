@@ -21,6 +21,8 @@ struct ChartClickInfo {
     sorted_points: Vec<(i64, usize)>,
     /// 各ポイントのゾーン境界 (zone_start_px, zone_end_px)
     zone_boundaries: Vec<(f64, f64)>,
+    /// ビューポート変更時のチャート再描画用データ
+    eval_data: chart::EvalPeriodsData,
 }
 
 pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
@@ -92,6 +94,30 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
         clear_holdings(&app);
         let page_size = app.get_eval_periods_page_size();
         refresh_eval_periods(weak.clone(), c.clone(), ci.clone(), page, page_size);
+    });
+
+    // eval-period-viewport-changed: ビューポート範囲に基づいてY軸を再計算
+    let weak = app.as_weak();
+    let ci = click_info.clone();
+    app.on_eval_period_viewport_changed(move |viewport_x, visible_width| {
+        let Some(app) = weak.upgrade() else {
+            return;
+        };
+        let info = ci.borrow();
+        if info.eval_data.points.is_empty() {
+            return;
+        }
+        let (body, y_labels) =
+            chart::rerender_eval_periods_for_viewport(&info.eval_data, viewport_x, visible_width);
+        app.set_eval_periods_chart_body_image(body);
+        let slint_y_labels: Vec<SlintYLabel> = y_labels
+            .iter()
+            .map(|(text, y_pos)| SlintYLabel {
+                text: SharedString::from(text.as_str()),
+                y_pos: *y_pos,
+            })
+            .collect();
+        app.set_eval_periods_y_labels(ModelRc::new(VecModel::from(slint_y_labels)));
     });
 
     // eval-period-chart-click: クリック位置から最寄りの期間を選択
@@ -213,14 +239,15 @@ fn refresh_eval_periods(
                     .collect();
                 app.set_eval_periods_y_labels(ModelRc::new(VecModel::from(slint_y_labels)));
                 app.set_eval_periods_chart_body_image(periods_chart.body);
-                app.set_eval_periods_chart_width(periods_chart.body_width as i32);
+                app.set_eval_periods_chart_width(periods_chart.data.body_width as i32);
 
                 // クリック・ホバー判定用メタデータを保存
                 {
                     let mut info = click_info.borrow_mut();
-                    info.plot_width = periods_chart.plot_width;
-                    info.x_min = periods_chart.x_min;
-                    info.x_max = periods_chart.x_max;
+                    info.plot_width = periods_chart.data.plot_width();
+                    info.x_min = periods_chart.data.x_min;
+                    info.x_max = periods_chart.data.x_max;
+                    info.eval_data = periods_chart.data;
                     info.sorted_points = periods_chart.sorted_points;
                     info.zone_boundaries = calc_zone_boundaries(&info);
 
@@ -512,6 +539,7 @@ mod tests {
             x_max,
             sorted_points,
             zone_boundaries: vec![],
+            eval_data: chart::EvalPeriodsData::default(),
         }
     }
 
