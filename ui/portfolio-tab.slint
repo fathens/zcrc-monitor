@@ -1,5 +1,5 @@
 import { Button, ListView } from "std-widgets.slint";
-import { SlintEvaluationPeriod, SlintPortfolioHolding, SlintChartZone, SlintYLabel } from "types.slint";
+import { SlintEvaluationPeriod, SlintPortfolioHolding, SlintChartZone, SlintYLabel, SlintChartPoint, SlintXLabel } from "types.slint";
 
 export component PortfolioTab inherits VerticalLayout {
     padding: 8px;
@@ -18,7 +18,9 @@ export component PortfolioTab inherits VerticalLayout {
     in property <bool> eval-period-holdings-loaded: false;
 
     in property <[SlintYLabel]> eval-periods-y-labels: [];
-    in property <image> eval-periods-chart-body-image;
+    in property <string> eval-periods-line-path: "";
+    in property <[SlintChartPoint]> eval-periods-points: [];
+    in property <[SlintXLabel]> eval-periods-x-labels: [];
     in property <int> eval-periods-chart-width: 0;
     in property <image> line-chart-image;
     in property <image> bar-chart-image;
@@ -105,11 +107,40 @@ export component PortfolioTab inherits VerticalLayout {
             viewport-width: root.eval-periods-chart-width * 1px;
             viewport-height: 150px;
 
-            Image {
-                source: root.eval-periods-chart-body-image;
+            // 白背景
+            Rectangle {
                 width: root.eval-periods-chart-width * 1px;
                 height: 150px;
-                image-fit: fill;
+                background: white;
+            }
+
+            // 折れ線（SVGパス）
+            Path {
+                width: root.eval-periods-chart-width * 1px;
+                height: 150px;
+                commands: root.eval-periods-line-path;
+                stroke: #1976d2;
+                stroke-width: 2px;
+            }
+
+            // データ点（円マーカー）
+            for point in root.eval-periods-points : Rectangle {
+                x: point.x * 1px - 4px;
+                y: point.y * 1px - 4px;
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: #1976d2;
+                animate y { duration: 200ms; easing: ease-out; }
+            }
+
+            // X軸ラベル
+            for label in root.eval-periods-x-labels : Text {
+                x: label.x-pos * 1px - 15px;
+                y: 150px - 25px;
+                text: label.text;
+                font-size: 11px;
+                color: #666666;
             }
 
             // ホバーゾーンハイライト（リアクティブ：mouse-x でゾーン自動判定）
