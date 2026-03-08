@@ -35,6 +35,10 @@ export component PortfolioTab inherits VerticalLayout {
     callback eval-period-chart-click(/* x_px */ float);
     callback eval-period-viewport-changed(/* viewport_x */ float, /* visible_width */ float);
 
+    // スクロール停止検出用プロパティ
+    property <float> prev-eval-viewport-x: 0;
+    property <float> settled-eval-viewport-x: 0;
+
     // === 評価期間チャート（横スクロール、Y軸動的） ===
     HorizontalLayout {
         spacing: 4px;
@@ -61,6 +65,21 @@ export component PortfolioTab inherits VerticalLayout {
     if root.eval-periods-chart-width > 0 : Rectangle {
         height: 150px;
 
+        // スクロール停止を検出して Y 軸を更新するデバウンスタイマー
+        // viewport-x が変化すると running=true、300ms 後に安定を確認して発火
+        eval-settle-timer := Timer {
+            interval: 300ms;
+            running: (-eval-flick.viewport-x / 1px) != root.settled-eval-viewport-x;
+            triggered => {
+                if (-eval-flick.viewport-x / 1px) == root.prev-eval-viewport-x {
+                    // 前回チェック時から変化なし → スクロール停止
+                    root.settled-eval-viewport-x = root.prev-eval-viewport-x;
+                    root.eval-period-viewport-changed(root.settled-eval-viewport-x, eval-flick.width / 1px);
+                }
+                root.prev-eval-viewport-x = -eval-flick.viewport-x / 1px;
+            }
+        }
+
         Rectangle {
             x: 0;
             y: 0;
@@ -84,10 +103,6 @@ export component PortfolioTab inherits VerticalLayout {
             height: 150px;
             viewport-width: root.eval-periods-chart-width * 1px;
             viewport-height: 150px;
-
-            flicked => {
-                root.eval-period-viewport-changed(-self.viewport-x / 1px, self.width / 1px);
-            }
 
             Image {
                 source: root.eval-periods-chart-body-image;
