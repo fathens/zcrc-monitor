@@ -83,7 +83,7 @@ fn calc_y_range(values: &[f64]) -> (f64, f64) {
     let y_min = if (max_val - min_val).abs() < f64::EPSILON {
         min_val - 1.0
     } else {
-        min_val - margin
+        (min_val - margin).max(0.0)
     };
     let y_max = if (max_val - min_val).abs() < f64::EPSILON {
         max_val + 1.0
