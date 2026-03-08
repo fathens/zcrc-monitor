@@ -41,6 +41,8 @@ pub struct EvalPeriodsChart {
     pub x_labels: Vec<(String, f32)>,
     pub chart_points: Vec<(f32, f32)>,
     pub line_path: String,
+    pub y_min: f64,
+    pub y_max: f64,
     pub data: EvalPeriodsData,
     /// 時間順に並んだ (timestamp, 元の periods 配列のインデックス)
     pub sorted_points: Vec<(i64, usize)>,
@@ -228,6 +230,8 @@ pub fn render_eval_periods_chart(
             x_labels: vec![],
             chart_points: vec![],
             line_path: String::new(),
+            y_min: 0.0,
+            y_max: 0.0,
             data: EvalPeriodsData::default(),
             sorted_points: vec![],
         };
@@ -278,6 +282,8 @@ pub fn render_eval_periods_chart(
         x_labels,
         chart_points,
         line_path,
+        y_min,
+        y_max,
         data: chart_data,
         sorted_points,
     }

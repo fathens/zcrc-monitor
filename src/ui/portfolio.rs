@@ -154,22 +154,16 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
         }
         let (to_y_min, to_y_max) = chart::calc_y_range(&visible_values);
 
-        // 範囲が同じなら何もしない
-        {
+        // 範囲が同じなら何もしない、変わったなら最終座標を計算
+        let final_points = {
             let info = ci.borrow();
             if (to_y_min - info.current_y_min).abs() < f64::EPSILON
                 && (to_y_max - info.current_y_max).abs() < f64::EPSILON
             {
                 return;
             }
-        }
-
-        // 最終座標を計算
-        let final_points;
-        {
-            let info = ci.borrow();
-            final_points = chart::calc_eval_chart_points(&info.eval_data, to_y_min, to_y_max);
-        }
+            chart::calc_eval_chart_points(&info.eval_data, to_y_min, to_y_max)
+        };
 
         // 点モデルを更新（Slint の animate y が 200ms で遷移）
         if let Some(model) = pm.borrow().as_ref() {
@@ -184,8 +178,8 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
         let line_path = chart::build_filled_line_path(&final_points, 1.0);
         app.set_eval_periods_line_path(SharedString::from(&line_path));
 
-        // Y軸ラベルを更新（Slint の animate y が 300ms で遷移）
-        let info = ci.borrow();
+        // Y軸ラベルを更新（Slint の animate y が 300ms で遷移）+ current_y_min/max を更新
+        let mut info = ci.borrow_mut();
         let plot_top = 5.0_f32;
         let plot_bottom = info.eval_data.height as f32 - 30.0;
         let y_labels = chart::calc_y_labels(to_y_min, to_y_max, 4, plot_top, plot_bottom);
@@ -197,11 +191,8 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
             })
             .collect();
         app.set_eval_periods_y_labels(ModelRc::new(VecModel::from(slint_y_labels)));
-        drop(info);
-
-        // current_y_min/max を更新
-        ci.borrow_mut().current_y_min = to_y_min;
-        ci.borrow_mut().current_y_max = to_y_max;
+        info.current_y_min = to_y_min;
+        info.current_y_max = to_y_max;
     });
 
     // eval-period-chart-click: クリック位置から最寄りの期間を選択
@@ -358,16 +349,8 @@ fn refresh_eval_periods(
                     info.plot_width = periods_chart.data.plot_width();
                     info.x_min = periods_chart.data.x_min;
                     info.x_max = periods_chart.data.x_max;
-                    // 初期Y範囲を計算して保存
-                    let values: Vec<f64> = periods_chart
-                        .data
-                        .points
-                        .iter()
-                        .map(|(_, v, _)| *v)
-                        .collect();
-                    let (y_min, y_max) = chart::calc_y_range(&values);
-                    info.current_y_min = y_min;
-                    info.current_y_max = y_max;
+                    info.current_y_min = periods_chart.y_min;
+                    info.current_y_max = periods_chart.y_max;
                     info.eval_data = periods_chart.data;
                     info.sorted_points = periods_chart.sorted_points;
                     info.zone_boundaries = calc_zone_boundaries(&info);
