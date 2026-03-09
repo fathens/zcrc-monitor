@@ -13,3 +13,13 @@ pub fn app_main() -> Result<(), slint::PlatformError> {
 
     app.run()
 }
+
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+fn android_main(app: android_activity::AndroidApp) {
+    android_logger::init_once(
+        android_logger::Config::default().with_max_level(log::LevelFilter::Info),
+    );
+    slint::android::init(app).unwrap();
+    app_main().unwrap();
+}
