@@ -36,10 +36,12 @@ export component PortfolioTab inherits VerticalLayout {
     callback eval-periods-prev-page();
     callback eval-period-chart-click(/* x_px */ float);
     callback eval-period-viewport-changed(/* viewport_x */ float, /* visible_width */ float);
+    callback holdings-chart-size-changed(/* width */ float, /* height */ float);
 
     // スクロール停止検出用プロパティ
     property <float> prev-eval-viewport-x: 0;
     property <float> settled-eval-viewport-x: 0;
+    property <float> settled-eval-visible-width: 0;
 
     // === 評価期間チャート（横スクロール、Y軸動的） ===
     HorizontalLayout {
@@ -71,11 +73,13 @@ export component PortfolioTab inherits VerticalLayout {
         // viewport-x が変化すると running=true、300ms 後に安定を確認して発火
         eval-settle-timer := Timer {
             interval: 300ms;
-            running: (-eval-flick.viewport-x / 1px) != root.settled-eval-viewport-x;
+            running: (-eval-flick.viewport-x / 1px) != root.settled-eval-viewport-x
+                || (eval-flick.width / 1px) != root.settled-eval-visible-width;
             triggered => {
                 if (-eval-flick.viewport-x / 1px) == root.prev-eval-viewport-x {
-                    // 前回チェック時から変化なし → スクロール停止
+                    // 前回チェック時から変化なし → スクロール停止またはリサイズ安定
                     root.settled-eval-viewport-x = root.prev-eval-viewport-x;
+                    root.settled-eval-visible-width = eval-flick.width / 1px;
                     root.eval-period-viewport-changed(root.settled-eval-viewport-x, eval-flick.width / 1px);
                 }
                 root.prev-eval-viewport-x = -eval-flick.viewport-x / 1px;
@@ -207,6 +211,10 @@ export component PortfolioTab inherits VerticalLayout {
         }
     }
 
+    // チャートサイズ変更検出用プロパティ
+    property <float> prev-chart-width: 0;
+    property <float> prev-chart-height: 0;
+
     if root.chart-mode == 0 && root.eval-period-holdings-loaded && root.eval-period-holdings.length > 0 : HorizontalLayout {
         height: 200px;
 
@@ -215,7 +223,7 @@ export component PortfolioTab inherits VerticalLayout {
 
             for label in root.line-chart-y-labels : Text {
                 text: label.text;
-                y: label.y-pos * 1px - 7px;
+                y: label.y-pos * parent.height - 7px;
                 animate y { duration: 300ms; easing: ease-in-out; }
                 width: 65px;
                 horizontal-alignment: right;
@@ -224,10 +232,26 @@ export component PortfolioTab inherits VerticalLayout {
             }
         }
 
-        Image {
-            source: root.line-chart-image;
+        line-chart-container := Rectangle {
             horizontal-stretch: 1;
-            image-fit: contain;
+
+            line-chart-size-timer := Timer {
+                interval: 300ms;
+                running: (line-chart-container.width / 1px) != root.prev-chart-width
+                    || (line-chart-container.height / 1px) != root.prev-chart-height;
+                triggered => {
+                    root.prev-chart-width = line-chart-container.width / 1px;
+                    root.prev-chart-height = line-chart-container.height / 1px;
+                    root.holdings-chart-size-changed(root.prev-chart-width, root.prev-chart-height);
+                }
+            }
+
+            Image {
+                source: root.line-chart-image;
+                width: parent.width;
+                height: parent.height;
+                image-fit: fill;
+            }
         }
     }
 
@@ -239,7 +263,7 @@ export component PortfolioTab inherits VerticalLayout {
 
             for label in root.bar-chart-y-labels : Text {
                 text: label.text;
-                y: label.y-pos * 1px - 7px;
+                y: label.y-pos * parent.height - 7px;
                 animate y { duration: 300ms; easing: ease-in-out; }
                 width: 65px;
                 horizontal-alignment: right;
@@ -248,10 +272,26 @@ export component PortfolioTab inherits VerticalLayout {
             }
         }
 
-        Image {
-            source: root.bar-chart-image;
+        bar-chart-container := Rectangle {
             horizontal-stretch: 1;
-            image-fit: contain;
+
+            bar-chart-size-timer := Timer {
+                interval: 300ms;
+                running: (bar-chart-container.width / 1px) != root.prev-chart-width
+                    || (bar-chart-container.height / 1px) != root.prev-chart-height;
+                triggered => {
+                    root.prev-chart-width = bar-chart-container.width / 1px;
+                    root.prev-chart-height = bar-chart-container.height / 1px;
+                    root.holdings-chart-size-changed(root.prev-chart-width, root.prev-chart-height);
+                }
+            }
+
+            Image {
+                source: root.bar-chart-image;
+                width: parent.width;
+                height: parent.height;
+                image-fit: fill;
+            }
         }
     }
 
@@ -306,7 +346,7 @@ export component PortfolioTab inherits VerticalLayout {
                     text: th.balance;
                     font-size: 13px;
                     color: #666666;
-                    min-width: 150px;
+                    min-width: 80px;
                     horizontal-alignment: right;
                 }
 
@@ -314,7 +354,7 @@ export component PortfolioTab inherits VerticalLayout {
                     text: th.value-wnear;
                     font-size: 13px;
                     color: #1976d2;
-                    min-width: 100px;
+                    min-width: 70px;
                     horizontal-alignment: right;
                 }
             }

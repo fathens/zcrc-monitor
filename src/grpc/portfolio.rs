@@ -23,12 +23,14 @@ pub struct EvaluationPeriodItem {
     pub selected_tokens: Vec<String>,
 }
 
+#[derive(Clone)]
 pub struct TokenHoldingItem {
     pub token: String,
     pub balance: TokenAmount,
     pub value_wnear: YoctoValue,
 }
 
+#[derive(Clone)]
 pub struct PortfolioHoldingItem {
     pub timestamp: DateTime<Utc>,
     pub token_holdings: Vec<TokenHoldingItem>,
