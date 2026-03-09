@@ -41,6 +41,7 @@ export component PortfolioTab inherits VerticalLayout {
     // スクロール停止検出用プロパティ
     property <float> prev-eval-viewport-x: 0;
     property <float> settled-eval-viewport-x: 0;
+    property <float> settled-eval-visible-width: 0;
 
     // === 評価期間チャート（横スクロール、Y軸動的） ===
     HorizontalLayout {
@@ -72,11 +73,13 @@ export component PortfolioTab inherits VerticalLayout {
         // viewport-x が変化すると running=true、300ms 後に安定を確認して発火
         eval-settle-timer := Timer {
             interval: 300ms;
-            running: (-eval-flick.viewport-x / 1px) != root.settled-eval-viewport-x;
+            running: (-eval-flick.viewport-x / 1px) != root.settled-eval-viewport-x
+                || (eval-flick.width / 1px) != root.settled-eval-visible-width;
             triggered => {
                 if (-eval-flick.viewport-x / 1px) == root.prev-eval-viewport-x {
-                    // 前回チェック時から変化なし → スクロール停止
+                    // 前回チェック時から変化なし → スクロール停止またはリサイズ安定
                     root.settled-eval-viewport-x = root.prev-eval-viewport-x;
+                    root.settled-eval-visible-width = eval-flick.width / 1px;
                     root.eval-period-viewport-changed(root.settled-eval-viewport-x, eval-flick.width / 1px);
                 }
                 root.prev-eval-viewport-x = -eval-flick.viewport-x / 1px;
