@@ -10,8 +10,18 @@ pub mod proto {
     tonic::include_proto!("zaciraci.v1");
 }
 
+fn default_grpc_url() -> &'static str {
+    if cfg!(target_os = "android") {
+        // Android エミュレータでは 10.0.2.2 がホストの localhost に相当
+        "http://10.0.2.2:50051"
+    } else {
+        // デスクトップ / iOS シミュレータ（localhost がそのままホストを指す）
+        "http://localhost:50051"
+    }
+}
+
 fn grpc_url() -> String {
-    std::env::var("ZCRC_GRPC_URL").unwrap_or_else(|_| "http://localhost:50051".to_string())
+    std::env::var("ZCRC_GRPC_URL").unwrap_or_else(|_| default_grpc_url().to_string())
 }
 
 #[derive(Clone)]
