@@ -32,3 +32,7 @@ log = "0.4"
 [build-dependencies]
 slint-build = "1.15"
 tonic-prost-build = "0.14"
+
+[package.metadata.apple]
+name = "zcrc-monitor"
+bundle-id = "com.example.zcrc-monitor"
