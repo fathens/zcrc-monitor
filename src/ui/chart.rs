@@ -348,9 +348,8 @@ fn render_line_chart_into(
         let x_max = (values.len() as f64 - 1.0).max(1.0);
 
         let mut chart = ChartBuilder::on(&root)
-            .caption("Portfolio (NEAR)", ("sans-serif", 14))
             .margin(10)
-            .x_label_area_size(30)
+            .x_label_area_size(0)
             .y_label_area_size(0)
             .build_cartesian_2d(0f64..x_max, y_min..y_max)
             .unwrap();
@@ -359,7 +358,7 @@ fn render_line_chart_into(
             .configure_mesh()
             .disable_x_mesh()
             .disable_y_mesh()
-            .x_labels(6)
+            .x_labels(0)
             .y_labels(0)
             .draw()
             .unwrap();
@@ -380,9 +379,9 @@ fn render_line_chart_into(
             )
             .unwrap();
 
-        // caption(14) + margin(10) ≈ 24 top, x_label_area(30) + margin(10) = 40 bottom
-        let plot_top = (10.0 + 24.0) / height as f32;
-        let plot_bottom = (height as f32 - 30.0 - 10.0) / height as f32;
+        // margin(10) top/bottom
+        let plot_top = 10.0 / height as f32;
+        let plot_bottom = (height as f32 - 10.0) / height as f32;
         labels = calc_y_labels(y_min, y_max, 6, plot_top, plot_bottom);
     }
 
@@ -452,9 +451,8 @@ fn render_token_lines_chart_into(
         let x_max = (holdings.len() as f64 - 1.0).max(1.0);
 
         let mut chart = ChartBuilder::on(&root)
-            .caption("Token Value (NEAR)", ("sans-serif", 14))
             .margin(10)
-            .x_label_area_size(30)
+            .x_label_area_size(0)
             .y_label_area_size(0)
             .build_cartesian_2d(0f64..x_max, y_min..y_max)
             .unwrap();
@@ -463,26 +461,21 @@ fn render_token_lines_chart_into(
             .configure_mesh()
             .disable_x_mesh()
             .disable_y_mesh()
-            .x_labels(6)
+            .x_labels(0)
             .y_labels(0)
             .draw()
             .unwrap();
 
         // トークンごとに色分けして折れ線 + マーカー
-        for (color_idx, (name, pts)) in token_series.iter().enumerate() {
+        for (color_idx, (_name, pts)) in token_series.iter().enumerate() {
             let color = Palette99::pick(color_idx);
-            let color2 = Palette99::pick(color_idx);
             let color3 = Palette99::pick(color_idx);
             chart
                 .draw_series(LineSeries::new(
                     pts.iter().map(|&(i, v)| (i as f64, v)),
                     color.stroke_width(2),
                 ))
-                .unwrap()
-                .label(name.as_str())
-                .legend(move |(x, y)| {
-                    Rectangle::new([(x, y - 5), (x + 10, y + 5)], color2.filled())
-                });
+                .unwrap();
 
             chart
                 .draw_series(
@@ -492,18 +485,9 @@ fn render_token_lines_chart_into(
                 .unwrap();
         }
 
-        // 凡例を描画
-        chart
-            .configure_series_labels()
-            .position(SeriesLabelPosition::UpperRight)
-            .background_style(WHITE.mix(0.8))
-            .border_style(BLACK)
-            .label_font(("sans-serif", 11))
-            .draw()
-            .unwrap();
-
-        let plot_top = (10.0 + 24.0) / height as f32;
-        let plot_bottom = (height as f32 - 30.0 - 10.0) / height as f32;
+        // margin(10) top/bottom
+        let plot_top = 10.0 / height as f32;
+        let plot_bottom = (height as f32 - 10.0) / height as f32;
         labels = calc_y_labels(y_min, y_max, 6, plot_top, plot_bottom);
     }
 
