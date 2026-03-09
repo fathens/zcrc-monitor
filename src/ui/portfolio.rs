@@ -11,6 +11,12 @@ use crate::{
 };
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel, Weak};
 
+/// ビットマップチャート再描画用のホールディングスキャッシュ
+#[derive(Default)]
+struct HoldingsCache {
+    items: Vec<PortfolioHoldingItem>,
+}
+
 /// チャートクリック・ホバー時に必要なメタデータ
 #[derive(Default)]
 struct ChartClickInfo {
@@ -32,6 +38,8 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     let click_info: Rc<RefCell<ChartClickInfo>> = Rc::new(RefCell::new(ChartClickInfo::default()));
     let points_model: Rc<RefCell<Option<Rc<VecModel<SlintChartPoint>>>>> =
         Rc::new(RefCell::new(None));
+    let holdings_cache: Rc<RefCell<HoldingsCache>> =
+        Rc::new(RefCell::new(HoldingsCache::default()));
 
     // 初回ロード
     refresh_eval_periods(
@@ -39,6 +47,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
         client.clone(),
         click_info.clone(),
         points_model.clone(),
+        holdings_cache.clone(),
         0,
         20,
     );
@@ -48,6 +57,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     let c = client.clone();
     let ci = click_info.clone();
     let pm = points_model.clone();
+    let hc = holdings_cache.clone();
 
     app.on_eval_periods_refresh(move || {
         let (page, page_size) = get_page_info(&weak);
@@ -56,6 +66,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
             c.clone(),
             ci.clone(),
             pm.clone(),
+            hc.clone(),
             page,
             page_size,
         );
@@ -64,6 +75,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     // eval-period-select
     let weak = app.as_weak();
     let c = client.clone();
+    let hc = holdings_cache.clone();
     app.on_eval_period_select(move |index| {
         let Some(app) = weak.upgrade() else {
             return;
@@ -71,16 +83,16 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
         if app.get_eval_period_selected_index() == index {
             // 選択解除
             app.set_eval_period_selected_index(-1);
-            clear_holdings(&app);
+            clear_holdings(&app, &hc);
         } else {
             app.set_eval_period_selected_index(index);
-            clear_holdings(&app);
+            clear_holdings(&app, &hc);
 
             // period_id を取得してホールディングをフェッチ
             let periods = app.get_eval_periods();
             if let Some(ep) = periods.row_data(index as usize) {
                 let period_id = ep.period_id.to_string();
-                fetch_holdings(weak.clone(), c.clone(), period_id);
+                fetch_holdings(weak.clone(), c.clone(), hc.clone(), period_id);
             }
         }
     });
@@ -90,6 +102,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     let c = client.clone();
     let ci = click_info.clone();
     let pm = points_model.clone();
+    let hc = holdings_cache.clone();
 
     app.on_eval_periods_next_page(move || {
         let Some(app) = weak.upgrade() else {
@@ -98,13 +111,14 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
         let page = app.get_eval_periods_page() + 1;
         app.set_eval_periods_page(page);
         app.set_eval_period_selected_index(-1);
-        clear_holdings(&app);
+        clear_holdings(&app, &hc);
         let page_size = app.get_eval_periods_page_size();
         refresh_eval_periods(
             weak.clone(),
             c.clone(),
             ci.clone(),
             pm.clone(),
+            hc.clone(),
             page,
             page_size,
         );
@@ -115,6 +129,7 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
     let c = client.clone();
     let ci = click_info.clone();
     let pm = points_model.clone();
+    let hc = holdings_cache.clone();
 
     app.on_eval_periods_prev_page(move || {
         let Some(app) = weak.upgrade() else {
@@ -123,13 +138,14 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
         let page = (app.get_eval_periods_page() - 1).max(0);
         app.set_eval_periods_page(page);
         app.set_eval_period_selected_index(-1);
-        clear_holdings(&app);
+        clear_holdings(&app, &hc);
         let page_size = app.get_eval_periods_page_size();
         refresh_eval_periods(
             weak.clone(),
             c.clone(),
             ci.clone(),
             pm.clone(),
+            hc.clone(),
             page,
             page_size,
         );
@@ -195,10 +211,60 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
         info.current_y_max = to_y_max;
     });
 
+    // holdings-chart-size-changed: コンテナサイズに合わせてビットマップチャートを再描画
+    let weak = app.as_weak();
+    let hc = holdings_cache.clone();
+
+    app.on_holdings_chart_size_changed(move |width, height| {
+        let w = width as u32;
+        let h = height as u32;
+        if w == 0 || h == 0 {
+            return;
+        }
+        let items = {
+            let cache = hc.borrow();
+            if cache.items.is_empty() {
+                return;
+            }
+            cache.items.clone()
+        };
+        let weak = weak.clone();
+        spawn(async move {
+            let charts = tokio::task::spawn_blocking(move || {
+                let (line, line_labels) = chart::render_line_chart_raw(&items, w, h);
+                let (bar, bar_labels) = chart::render_token_lines_chart_raw(&items, w, h);
+                (line, line_labels, bar, bar_labels, w, h)
+            })
+            .await;
+
+            if let Ok((line_raw, line_labels, bar_raw, bar_labels, cw, ch)) = charts
+                && let Some(app) = weak.upgrade()
+            {
+                app.set_line_chart_image(chart::image_from_raw_rgb8(&line_raw, cw, ch));
+                app.set_bar_chart_image(chart::image_from_raw_rgb8(&bar_raw, cw, ch));
+
+                let to_slint_labels = |labels: Vec<(String, f32)>| -> ModelRc<SlintYLabel> {
+                    ModelRc::new(VecModel::from(
+                        labels
+                            .into_iter()
+                            .map(|(text, y_pos)| SlintYLabel {
+                                text: SharedString::from(text),
+                                y_pos,
+                            })
+                            .collect::<Vec<_>>(),
+                    ))
+                };
+                app.set_line_chart_y_labels(to_slint_labels(line_labels));
+                app.set_bar_chart_y_labels(to_slint_labels(bar_labels));
+            }
+        });
+    });
+
     // eval-period-chart-click: クリック位置から最寄りの期間を選択
     let weak = app.as_weak();
     let c = client;
     let ci = click_info;
+    let hc = holdings_cache;
     app.on_eval_period_chart_click(move |x_px| {
         let Some(app) = weak.upgrade() else {
             return;
@@ -221,13 +287,13 @@ pub fn setup_portfolio_callbacks(app: &AppWindow, client: GrpcClient) {
             .unwrap();
 
         app.set_eval_period_selected_index(nearest_idx as i32);
-        clear_holdings(&app);
+        clear_holdings(&app, &hc);
 
         let periods = app.get_eval_periods();
         if let Some(ep) = periods.row_data(nearest_idx) {
             app.set_eval_period_selected_initial_value(ep.initial_value.clone());
             let period_id = ep.period_id.to_string();
-            fetch_holdings(weak.clone(), c.clone(), period_id);
+            fetch_holdings(weak.clone(), c.clone(), hc.clone(), period_id);
         }
     });
 }
@@ -269,13 +335,14 @@ fn calc_zone_boundaries(info: &ChartClickInfo) -> Vec<(f64, f64)> {
     zones
 }
 
-fn clear_holdings(app: &AppWindow) {
+fn clear_holdings(app: &AppWindow, cache: &Rc<RefCell<HoldingsCache>>) {
     app.set_eval_period_holdings(ModelRc::new(VecModel::<SlintPortfolioHolding>::default()));
     app.set_eval_period_holdings_error("".into());
     app.set_eval_period_holdings_loaded(false);
     app.set_line_chart_image(Image::default());
     app.set_bar_chart_image(Image::default());
     app.set_eval_period_selected_initial_value("".into());
+    cache.borrow_mut().items.clear();
 }
 
 fn get_page_info(weak: &Weak<AppWindow>) -> (i32, i32) {
@@ -294,6 +361,7 @@ fn refresh_eval_periods(
     client: GrpcClient,
     click_info: Rc<RefCell<ChartClickInfo>>,
     points_model: Rc<RefCell<Option<Rc<VecModel<SlintChartPoint>>>>>,
+    holdings_cache: Rc<RefCell<HoldingsCache>>,
     page: i32,
     page_size: i32,
 ) {
@@ -377,7 +445,12 @@ fn refresh_eval_periods(
                         "{display} NEAR"
                     )));
                     app.set_eval_period_selected_index(0);
-                    fetch_holdings(weak.clone(), client.clone(), period_id);
+                    fetch_holdings(
+                        weak.clone(),
+                        client.clone(),
+                        holdings_cache.clone(),
+                        period_id,
+                    );
                 }
 
                 let slint_items: Vec<SlintEvaluationPeriod> =
@@ -397,7 +470,12 @@ fn refresh_eval_periods(
     });
 }
 
-fn fetch_holdings(weak: Weak<AppWindow>, client: GrpcClient, period_id: String) {
+fn fetch_holdings(
+    weak: Weak<AppWindow>,
+    client: GrpcClient,
+    holdings_cache: Rc<RefCell<HoldingsCache>>,
+    period_id: String,
+) {
     spawn(async move {
         let result = crate::grpc::portfolio::get_portfolio_holdings(&client, &period_id).await;
         let Some(app) = weak.upgrade() else {
@@ -412,7 +490,10 @@ fn fetch_holdings(weak: Weak<AppWindow>, client: GrpcClient, period_id: String) 
                 app.set_eval_period_holdings_loaded(true);
                 app.set_eval_period_holdings_error("".into());
 
-                // チャートをバックグラウンドスレッドで描画（Vec<u8> は Send）
+                // キャッシュに保存（サイズ変更時の再描画用）
+                holdings_cache.borrow_mut().items = items.clone();
+
+                // 初回描画はデフォルトサイズで行い、サイズ変更コールバックで再描画される
                 let charts = tokio::task::spawn_blocking(move || {
                     let (line, line_labels) = chart::render_line_chart_raw(&items, 400, 250);
                     let (bar, bar_labels) = chart::render_token_lines_chart_raw(&items, 400, 250);

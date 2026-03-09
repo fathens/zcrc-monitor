@@ -381,8 +381,8 @@ fn render_line_chart_into(
             .unwrap();
 
         // caption(14) + margin(10) ≈ 24 top, x_label_area(30) + margin(10) = 40 bottom
-        let plot_top = 10.0 + 24.0;
-        let plot_bottom = height as f32 - 30.0 - 10.0;
+        let plot_top = (10.0 + 24.0) / height as f32;
+        let plot_bottom = (height as f32 - 30.0 - 10.0) / height as f32;
         labels = calc_y_labels(y_min, y_max, 6, plot_top, plot_bottom);
     }
 
@@ -502,8 +502,8 @@ fn render_token_lines_chart_into(
             .draw()
             .unwrap();
 
-        let plot_top = 10.0 + 24.0;
-        let plot_bottom = height as f32 - 30.0 - 10.0;
+        let plot_top = (10.0 + 24.0) / height as f32;
+        let plot_bottom = (height as f32 - 30.0 - 10.0) / height as f32;
         labels = calc_y_labels(y_min, y_max, 6, plot_top, plot_bottom);
     }
 
