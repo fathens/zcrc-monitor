@@ -3,6 +3,10 @@ name = "zcrc-monitor"
 version = "0.3.1"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib", "staticlib", "lib"]
+name = "zcrc_monitor"
+
 [dependencies]
 slint = "1.15"
 tonic = { version = "0.14", features = ["tls-ring", "tls-native-roots"] }
