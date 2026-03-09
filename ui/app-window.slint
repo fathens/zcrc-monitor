@@ -7,8 +7,9 @@ export { SlintConfigEntry, SlintKeyDefinition, SlintEvaluationPeriod, SlintToken
 
 export component AppWindow inherits Window {
     title: "zcrc-monitor";
-    preferred-width: 480px;
+    preferred-width: 360px;
     preferred-height: 800px;
+    min-width: 320px;
 
     in property <string> health-status: "disconnected";
     in property <string> health-status-text: "未接続";
@@ -71,6 +72,7 @@ export component AppWindow inherits Window {
     callback eval-periods-prev-page <=> portfolio.eval-periods-prev-page;
     callback eval-period-chart-click <=> portfolio.eval-period-chart-click;
     callback eval-period-viewport-changed <=> portfolio.eval-period-viewport-changed;
+    callback holdings-chart-size-changed <=> portfolio.holdings-chart-size-changed;
 
     VerticalLayout {
         padding: 16px;
