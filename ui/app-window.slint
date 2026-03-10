@@ -104,6 +104,8 @@ export component AppWindow inherits Window {
 
             Button {
                 text: root.settings-visible ? "x 閉じる" : "設定";
+                min-width: 80px;
+                min-height: 48px;
                 clicked => {
                     root.settings-visible = !root.settings-visible;
                 }
