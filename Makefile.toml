@@ -1,0 +1,93 @@
+[env]
+ANDROID_SDK_ROOT = { value = "/opt/homebrew/share/android-commandlinetools", condition = { env_not_set = ["ANDROID_SDK_ROOT", "ANDROID_HOME"] } }
+ANDROID_HOME = "${ANDROID_SDK_ROOT}"
+ADB = "${ANDROID_SDK_ROOT}/platform-tools/adb"
+EMULATOR = "${ANDROID_SDK_ROOT}/emulator/emulator"
+ANDROID_AVD_NAME = { value = "zcrc_test", condition = { env_not_set = ["ANDROID_AVD_NAME"] } }
+ANDROID_APP_ID = "com.example.zcrc_monitor"
+ANDROID_ACTIVITY = "${ANDROID_APP_ID}/android.app.NativeActivity"
+
+# === Android Emulator ===
+
+[tasks.emu-start]
+description = "Android エミュレータを起動"
+script = '''
+if ${ADB} devices 2>/dev/null | grep -q "emulator"; then
+    echo "Emulator is already running."
+    exit 0
+fi
+${EMULATOR} -avd ${ANDROID_AVD_NAME} -no-metrics &
+disown
+echo "Waiting for boot..."
+${ADB} wait-for-device
+while [ "$(${ADB} shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" != "1" ]; do
+    sleep 3
+done
+echo "Emulator is ready."
+'''
+
+[tasks.emu-stop]
+description = "Android エミュレータを停止"
+script = '''
+${ADB} emu kill 2>/dev/null || echo "No emulator running."
+'''
+
+# === Build & Install ===
+
+[tasks.android-build]
+description = "Android 向け Rust ライブラリをビルド"
+script = '''
+./android/build-rust.sh ${@}
+'''
+
+[tasks.android-apk]
+description = "APK をビルドしてエミュレータにインストール"
+cwd = "./android"
+script = '''
+ANDROID_HOME=${ANDROID_SDK_ROOT} ./gradlew installDebug
+'''
+
+[tasks.android-install]
+description = "Rust ビルド + APK インストール (フルビルド)"
+dependencies = ["android-build", "android-apk"]
+
+[tasks.android-uninstall]
+description = "エミュレータからアプリをアンインストール"
+script = '''
+${ADB} uninstall ${ANDROID_APP_ID} || echo "App not installed."
+'''
+
+# === App Control ===
+
+[tasks.android-run]
+description = "エミュレータでアプリを起動"
+script = '''
+${ADB} shell am start -n ${ANDROID_ACTIVITY}
+'''
+
+[tasks.android-stop]
+description = "エミュレータでアプリを停止"
+script = '''
+${ADB} shell am force-stop ${ANDROID_APP_ID}
+'''
+
+[tasks.android-restart]
+description = "アプリを再起動 (停止 → 起動)"
+dependencies = ["android-stop", "android-run"]
+
+[tasks.android-logcat]
+description = "アプリのログを表示"
+script = '''
+PID=$(${ADB} shell pidof ${ANDROID_APP_ID})
+if [ -z "$PID" ]; then
+    echo "App is not running."
+    exit 1
+fi
+${ADB} logcat --pid="$PID"
+'''
+
+# === Convenience ===
+
+[tasks.android]
+description = "フルデプロイ: エミュレータ起動 → ビルド → インストール → アプリ起動"
+dependencies = ["emu-start", "android-install", "android-run"]
