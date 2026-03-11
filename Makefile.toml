@@ -93,7 +93,7 @@ dependencies = ["ios-sim-start", "ios-install", "ios-run"]
 
 # === Android Emulator ===
 
-[tasks.emu-start]
+[tasks.android-emu-start]
 description = "Android エミュレータを起動"
 script = '''
 if ${ADB} devices 2>/dev/null | grep -q "emulator"; then
@@ -110,13 +110,13 @@ done
 echo "Emulator is ready."
 '''
 
-[tasks.emu-stop]
+[tasks.android-emu-stop]
 description = "Android エミュレータを停止"
 script = '''
 ${ADB} emu kill 2>/dev/null || echo "No emulator running."
 '''
 
-# === Build & Install ===
+# === Android Build & Install ===
 
 [tasks.android-build]
 description = "Android 向け Rust ライブラリをビルド"
@@ -141,7 +141,7 @@ script = '''
 ${ADB} uninstall ${ANDROID_APP_ID} || echo "App not installed."
 '''
 
-# === App Control ===
+# === Android App Control ===
 
 [tasks.android-run]
 description = "エミュレータでアプリを起動"
@@ -170,8 +170,8 @@ fi
 ${ADB} logcat --pid="$PID"
 '''
 
-# === Convenience ===
+# === Android Convenience ===
 
 [tasks.android]
 description = "フルデプロイ: エミュレータ起動 → ビルド → インストール → アプリ起動"
-dependencies = ["emu-start", "android-install", "android-run"]
+dependencies = ["android-emu-start", "android-install", "android-run"]
