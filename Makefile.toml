@@ -12,7 +12,7 @@ IOS_APP_DIR = "/tmp/zcrc-monitor.app"
 
 # === iOS Simulator ===
 
-[tasks.sim-start]
+[tasks.ios-sim-start]
 description = "iOS シミュレータを起動"
 script = '''
 if xcrun simctl list devices booted | grep -q "${IOS_SIM_DEVICE_ID}"; then
@@ -24,7 +24,7 @@ open -a Simulator
 echo "Simulator is ready."
 '''
 
-[tasks.sim-stop]
+[tasks.ios-sim-stop]
 description = "iOS シミュレータを停止"
 script = '''
 xcrun simctl shutdown ${IOS_SIM_DEVICE_ID} 2>/dev/null || echo "No simulator running."
@@ -89,7 +89,7 @@ xcrun simctl spawn ${IOS_SIM_DEVICE_ID} log stream --predicate "subsystem == '${
 
 [tasks.ios]
 description = "フルデプロイ: シミュレータ起動 → ビルド → インストール → アプリ起動"
-dependencies = ["sim-start", "ios-install", "ios-run"]
+dependencies = ["ios-sim-start", "ios-install", "ios-run"]
 
 # === Android Emulator ===
 
