@@ -111,11 +111,24 @@ src/
 - ストリーミングによる進捗表示（server streaming）
 - 完了済み結果の表示（`GetResult`）
 
-## Future: モバイル対応
+## モバイル対応（Android / iOS）
 
-- Slint のモバイルターゲット（Android / iOS）調査
-- モバイル向け UI レイアウト調整
-- tonic-web（HTTP/1.1）経由での接続確認
+### 実装済み
+
+- エントリポイントを `lib.rs` に分離（`app_main()`）
+- `android_main` エントリポイント（`android-activity` crate）
+- gRPC 接続先のプラットフォーム別デフォルト（Android エミュレータ: `10.0.2.2`）
+- Android Gradle プロジェクト一式（`android/`）
+- `cargo-ndk` ビルドスクリプト（`android/build-rust.sh`）
+- iOS 用メタデータ（`[package.metadata.apple]`、`cargo-xcode` 対応）
+
+### 動作確認待ち
+
+- Android エミュレータでの起動確認（`cargo ndk -t arm64-v8a build --lib`）
+- iOS シミュレータでの起動確認（`cargo build --target aarch64-apple-ios-sim --lib`）
+- plotters フォント（`"sans-serif"`）のモバイルでの描画確認
+- `common` クレート（`nalgebra`, `ndarray`）のクロスコンパイル検証
+- `ring`（TLS）の Android NDK ビルド検証
 
 ## フェーズ依存関係
 

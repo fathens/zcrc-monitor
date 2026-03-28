@@ -1,0 +1,177 @@
+[env]
+ANDROID_SDK_ROOT = { value = "/opt/homebrew/share/android-commandlinetools", condition = { env_not_set = ["ANDROID_SDK_ROOT", "ANDROID_HOME"] } }
+ANDROID_HOME = "${ANDROID_SDK_ROOT}"
+ADB = "${ANDROID_SDK_ROOT}/platform-tools/adb"
+EMULATOR = "${ANDROID_SDK_ROOT}/emulator/emulator"
+ANDROID_AVD_NAME = { value = "zcrc_test", condition = { env_not_set = ["ANDROID_AVD_NAME"] } }
+ANDROID_APP_ID = "com.example.zcrc_monitor"
+ANDROID_ACTIVITY = "${ANDROID_APP_ID}/android.app.NativeActivity"
+IOS_SIM_DEVICE_ID = { value = "67246430-C404-4B6B-91D7-75CFDC22016B", condition = { env_not_set = ["IOS_SIM_DEVICE_ID"] } }
+IOS_APP_BUNDLE_ID = "com.example.zcrc-monitor"
+IOS_APP_DIR = "/tmp/zcrc-monitor.app"
+
+# === iOS Simulator ===
+
+[tasks.ios-sim-start]
+description = "iOS シミュレータを起動"
+script = '''
+if xcrun simctl list devices booted | grep -q "${IOS_SIM_DEVICE_ID}"; then
+    echo "Simulator is already running."
+    exit 0
+fi
+xcrun simctl boot ${IOS_SIM_DEVICE_ID}
+open -a Simulator
+echo "Simulator is ready."
+'''
+
+[tasks.ios-sim-stop]
+description = "iOS シミュレータを停止"
+script = '''
+xcrun simctl shutdown ${IOS_SIM_DEVICE_ID} 2>/dev/null || echo "No simulator running."
+'''
+
+# === iOS Build & Install ===
+
+[tasks.ios-build]
+description = "iOS シミュレータ向け Rust ビルド"
+script = '''
+cargo build --target aarch64-apple-ios-sim --bin zcrc-monitor ${@}
+'''
+
+[tasks.ios-bundle]
+description = ".app バンドル作成 (バイナリ + Info.plist コピー)"
+script = '''
+mkdir -p ${IOS_APP_DIR}
+cp target/aarch64-apple-ios-sim/debug/zcrc-monitor ${IOS_APP_DIR}/zcrc-monitor
+cp ios/Info.plist ${IOS_APP_DIR}/Info.plist
+echo "App bundle created at ${IOS_APP_DIR}"
+'''
+
+[tasks.ios-install]
+description = "フルビルド + シミュレータにインストール"
+dependencies = ["ios-build", "ios-bundle"]
+script = '''
+xcrun simctl install ${IOS_SIM_DEVICE_ID} ${IOS_APP_DIR}
+echo "App installed."
+'''
+
+[tasks.ios-uninstall]
+description = "シミュレータからアプリを削除"
+script = '''
+xcrun simctl uninstall ${IOS_SIM_DEVICE_ID} ${IOS_APP_BUNDLE_ID} || echo "App not installed."
+'''
+
+# === iOS App Control ===
+
+[tasks.ios-run]
+description = "シミュレータでアプリを起動"
+script = '''
+xcrun simctl launch ${IOS_SIM_DEVICE_ID} ${IOS_APP_BUNDLE_ID}
+'''
+
+[tasks.ios-stop]
+description = "シミュレータでアプリを停止"
+script = '''
+xcrun simctl terminate ${IOS_SIM_DEVICE_ID} ${IOS_APP_BUNDLE_ID}
+'''
+
+[tasks.ios-restart]
+description = "アプリを再起動 (停止 → 起動)"
+dependencies = ["ios-stop", "ios-run"]
+
+[tasks.ios-log]
+description = "アプリのログを表示"
+script = '''
+xcrun simctl spawn ${IOS_SIM_DEVICE_ID} log stream --predicate "subsystem == '${IOS_APP_BUNDLE_ID}' OR process == 'zcrc-monitor'"
+'''
+
+# === iOS Convenience ===
+
+[tasks.ios]
+description = "フルデプロイ: シミュレータ起動 → ビルド → インストール → アプリ起動"
+dependencies = ["ios-sim-start", "ios-install", "ios-run"]
+
+# === Android Emulator ===
+
+[tasks.android-emu-start]
+description = "Android エミュレータを起動"
+script = '''
+if ${ADB} devices 2>/dev/null | grep -q "emulator"; then
+    echo "Emulator is already running."
+    exit 0
+fi
+${EMULATOR} -avd ${ANDROID_AVD_NAME} -no-metrics &
+disown
+echo "Waiting for boot..."
+${ADB} wait-for-device
+while [ "$(${ADB} shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" != "1" ]; do
+    sleep 3
+done
+echo "Emulator is ready."
+'''
+
+[tasks.android-emu-stop]
+description = "Android エミュレータを停止"
+script = '''
+${ADB} emu kill 2>/dev/null || echo "No emulator running."
+'''
+
+# === Android Build & Install ===
+
+[tasks.android-build]
+description = "Android 向け Rust ライブラリをビルド"
+script = '''
+./android/build-rust.sh ${@}
+'''
+
+[tasks.android-apk]
+description = "APK をビルドしてエミュレータにインストール"
+cwd = "./android"
+script = '''
+ANDROID_HOME=${ANDROID_SDK_ROOT} ./gradlew installDebug
+'''
+
+[tasks.android-install]
+description = "Rust ビルド + APK インストール (フルビルド)"
+dependencies = ["android-build", "android-apk"]
+
+[tasks.android-uninstall]
+description = "エミュレータからアプリをアンインストール"
+script = '''
+${ADB} uninstall ${ANDROID_APP_ID} || echo "App not installed."
+'''
+
+# === Android App Control ===
+
+[tasks.android-run]
+description = "エミュレータでアプリを起動"
+script = '''
+${ADB} shell am start -n ${ANDROID_ACTIVITY}
+'''
+
+[tasks.android-stop]
+description = "エミュレータでアプリを停止"
+script = '''
+${ADB} shell am force-stop ${ANDROID_APP_ID}
+'''
+
+[tasks.android-restart]
+description = "アプリを再起動 (停止 → 起動)"
+dependencies = ["android-stop", "android-run"]
+
+[tasks.android-logcat]
+description = "アプリのログを表示"
+script = '''
+PID=$(${ADB} shell pidof ${ANDROID_APP_ID})
+if [ -z "$PID" ]; then
+    echo "App is not running."
+    exit 1
+fi
+${ADB} logcat --pid="$PID"
+'''
+
+# === Android Convenience ===
+
+[tasks.android]
+description = "フルデプロイ: エミュレータ起動 → ビルド → インストール → アプリ起動"
+dependencies = ["android-emu-start", "android-install", "android-run"]
